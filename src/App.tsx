@@ -2581,17 +2581,17 @@ function RewardsAndSavingsSection({
 
         <div className="flex flex-wrap items-center gap-2">
           {BADGE_THRESHOLDS.map((b) => {
-            const unlocked = savingsStats.total >= b.count;
+            const unlocked = savingsStats.total >= b.n;
             return (
               <div
-                key={b.count}
+                key={b.n}
                 className={`px-3 py-1.5 rounded-xl border text-xs font-medium ${
                   unlocked
                     ? 'bg-emerald-50/70 border-emerald-200 text-emerald-800'
                     : 'bg-slate-50 border-slate-200/60 text-slate-400'
                 }`}
               >
-                {b.title} ({b.count} שב׳)
+                {b.label} ({b.n} שב׳)
               </div>
             );
           })}
