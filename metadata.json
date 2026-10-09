@@ -1,0 +1,6 @@
+{
+  "name": "כלכלת הבית ומעשרות Pro",
+  "description": "מערכת שולחנית מתקדמת לניהול תקציב, תזרים מזומנים, יעדי חיסכון ומערכת מעשרות וחומש מלאה.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
