@@ -2,15 +2,12 @@ import React, { useMemo, useState } from 'react';
 import {
   Activity,
   AlertTriangle,
-  ArrowUpRight,
   CalendarClock,
   CheckCircle2,
   CreditCard,
   Layers,
   Plus,
   Sliders,
-  TrendingDown,
-  TrendingUp,
 } from 'lucide-react';
 import { CategoryItem, MaaserSettings, SavingsFund, Transaction } from '../types';
 import { HE_DAYS, HE_MONTHS } from '../constants';
@@ -28,6 +25,7 @@ interface ForecastAndAnalyticsViewProps {
 }
 
 type ForecastModel = 'smart_hybrid' | 'linear_run_rate' | 'historical_baseline';
+type SubSection = 'trajectory' | 'categories' | 'simulators';
 
 function pad(n: number): string {
   return String(n).padStart(2, '0');
@@ -47,13 +45,13 @@ export const ForecastAndAnalyticsView: React.FC<ForecastAndAnalyticsViewProps> =
     viewYear === now.getFullYear() && viewMonth === now.getMonth();
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
 
-  // Allow user to inspect real current day or simulate any cutoff day in the month
   const defaultCutoffDay = isCurrentRealMonth
     ? Math.max(1, now.getDate())
     : daysInMonth;
   const [simulatedDay, setSimulatedDay] = useState<number>(defaultCutoffDay);
   const [forecastModel, setForecastModel] = useState<ForecastModel>('smart_hybrid');
   const [includeExpectedRecurring, setIncludeExpectedRecurring] = useState<boolean>(true);
+  const [activeSubSection, setActiveSubSection] = useState<SubSection>('trajectory');
 
   // What-If Simulator State
   const [cutVariablePct, setCutVariablePct] = useState<number>(10);
@@ -65,7 +63,6 @@ export const ForecastAndAnalyticsView: React.FC<ForecastAndAnalyticsViewProps> =
   const [installmentsCount, setInstallmentsCount] = useState<string>('6');
   const [installmentCategory, setInstallmentCategory] = useState<string>('shopping');
 
-  // Keep simulatedDay synced when switching months
   React.useEffect(() => {
     setSimulatedDay(
       viewYear === now.getFullYear() && viewMonth === now.getMonth()
@@ -78,16 +75,13 @@ export const ForecastAndAnalyticsView: React.FC<ForecastAndAnalyticsViewProps> =
   const remainingDays = Math.max(0, daysInMonth - elapsedDays);
   const currentMonthPrefix = `${viewYear}-${pad(viewMonth + 1)}`;
 
-  // Core Deterministic Statistical & Run-Rate Analysis
   const analysis = useMemo(() => {
-    // 1. Separate current month transactions up to simulatedDay vs historical months
     const currentMonthTx = transactions.filter((t) => {
       if (t.date.slice(0, 7) !== currentMonthPrefix) return false;
       const dayNum = parseInt(t.date.slice(8, 10), 10);
       return dayNum <= elapsedDays;
     });
 
-    // Previous 3 months prefixes
     const prevPrefixes: string[] = [];
     for (let i = 1; i <= 3; i++) {
       const d = new Date(viewYear, viewMonth - i, 1);
@@ -102,33 +96,25 @@ export const ForecastAndAnalyticsView: React.FC<ForecastAndAnalyticsViewProps> =
       new Set(historicalTx.map((t) => t.date.slice(0, 7))).size
     );
 
-    // 2. Analyze weekday spending weights from all available history + current month
     const weekdaySpend = [0, 0, 0, 0, 0, 0, 0];
-    const weekdayCounts = [0, 0, 0, 0, 0, 0, 0];
     for (const t of transactions) {
       if (t.type === 'expense' && !t.isRecurring) {
         const d = new Date(t.date + 'T00:00:00');
-        const wd = d.getDay();
-        weekdaySpend[wd] += t.amount;
-        weekdayCounts[wd] += 1;
+        weekdaySpend[d.getDay()] += t.amount;
       }
     }
     const totalVariableAllTime = weekdaySpend.reduce((a, b) => a + b, 0);
-    // Relative weight of each weekday (1.0 = average day)
     const weekdayWeights = weekdaySpend.map((amt) =>
       totalVariableAllTime > 0 ? (amt / totalVariableAllTime) * 7 : 1
     );
 
-    // Compute weekday weight multiplier for the remaining days of the current month
     let remainingWeightedDays = 0;
     for (let d = elapsedDays + 1; d <= daysInMonth; d++) {
       const wd = new Date(viewYear, viewMonth, d).getDay();
-      // Blend 50% uniform day + 50% empirical weekday pattern for stability
       const weight = 0.5 + 0.5 * weekdayWeights[wd];
       remainingWeightedDays += weight;
     }
 
-    // 3. Detect Expected Recurring Transactions from previous month that haven't occurred yet this month
     const lastMonthPrefix = prevPrefixes[0];
     const lastMonthRecurring = transactions.filter(
       (t) => t.date.slice(0, 7) === lastMonthPrefix && t.isRecurring
@@ -142,7 +128,6 @@ export const ForecastAndAnalyticsView: React.FC<ForecastAndAnalyticsViewProps> =
 
     for (const prevRec of lastMonthRecurring) {
       const expectedDay = Math.min(daysInMonth, parseInt(prevRec.date.slice(8, 10), 10));
-      // Check if an equivalent recurring transaction already exists in currentMonthTx
       const alreadyLogged = currentMonthTx.some(
         (cur) =>
           cur.type === prevRec.type &&
@@ -171,7 +156,6 @@ export const ForecastAndAnalyticsView: React.FC<ForecastAndAnalyticsViewProps> =
           .reduce((s, u) => s + u.template.amount, 0)
       : 0;
 
-    // 4. Current Month Fixed vs Variable Totals So Far
     let fixedExpenseSoFar = 0;
     let variableExpenseSoFar = 0;
     let incomeSoFar = 0;
@@ -187,14 +171,10 @@ export const ForecastAndAnalyticsView: React.FC<ForecastAndAnalyticsViewProps> =
 
     const totalExpenseSoFar = fixedExpenseSoFar + variableExpenseSoFar;
 
-    // Historical Variable & Total Monthly Averages
     let histVariableTotal = 0;
     let histTotalExpense = 0;
-    let histTotalIncome = 0;
     for (const t of historicalTx) {
-      if (t.type === 'income') {
-        histTotalIncome += t.amount;
-      } else {
+      if (t.type === 'expense') {
         histTotalExpense += t.amount;
         if (!t.isRecurring) histVariableTotal += t.amount;
       }
@@ -203,11 +183,8 @@ export const ForecastAndAnalyticsView: React.FC<ForecastAndAnalyticsViewProps> =
     const avgHistDailyVariable = avgHistVariableMonthly / 30;
     const avgHistTotalMonthlyExpense = histTotalExpense / activeHistoricalMonthsCount;
 
-    // Current Daily Run Rate (Variable & Total)
     const currentDailyVariableRate = variableExpenseSoFar / elapsedDays;
-    const currentDailyTotalRate = totalExpenseSoFar / elapsedDays;
 
-    // 5. Calculate Projected Variable Spend for Remaining Days under the 3 Models
     const linearProjectedRemainingVariable = currentDailyVariableRate * remainingDays;
     const historicalProjectedRemainingVariable = avgHistDailyVariable * remainingWeightedDays;
     const hybridProjectedRemainingVariable =
@@ -226,7 +203,6 @@ export const ForecastAndAnalyticsView: React.FC<ForecastAndAnalyticsViewProps> =
     const projectedEndMonthIncome = incomeSoFar + expectedRecurringIncomes;
     const projectedEndMonthBalance = projectedEndMonthIncome - projectedEndMonthExpense;
 
-    // Total Budget Goal Comparison
     const totalBudgetGoal = Object.values(goals).reduce(
       (s: number, v) => s + (Number(v) || 0),
       0
@@ -241,7 +217,6 @@ export const ForecastAndAnalyticsView: React.FC<ForecastAndAnalyticsViewProps> =
     const safeDailyAllowance =
       remainingDays > 0 ? remainingBudgetAfterFixed / remainingDays : 0;
 
-    // 6. Category-by-Category Forecast Table
     const categoryForecasts = expenseCategories.map((cat) => {
       const catCurrTx = currentMonthTx.filter(
         (t) => t.type === 'expense' && t.category === cat.id
@@ -292,7 +267,6 @@ export const ForecastAndAnalyticsView: React.FC<ForecastAndAnalyticsViewProps> =
           ? Math.max(0, (catGoal - catSpentSoFar - catUpcomingFixed) / remainingDays)
           : 0;
 
-      // Anomaly / Creep detection: is projected >15% above historical average?
       const creepRatio =
         catHistAvg > 100 ? (catProjectedTotal - catHistAvg) / catHistAvg : 0;
 
@@ -310,7 +284,6 @@ export const ForecastAndAnalyticsView: React.FC<ForecastAndAnalyticsViewProps> =
       };
     });
 
-    // 7. Build Daily Cumulative Trajectory Series (Day 1 .. daysInMonth) for SVG Chart
     const dailySeries: {
       day: number;
       actualCumulative: number | null;
@@ -363,7 +336,6 @@ export const ForecastAndAnalyticsView: React.FC<ForecastAndAnalyticsViewProps> =
       expectedRecurringIncomes,
       upcomingRecurring,
       currentDailyVariableRate,
-      currentDailyTotalRate,
       avgHistDailyVariable,
       avgHistTotalMonthlyExpense,
       projectedEndMonthExpense,
@@ -389,7 +361,6 @@ export const ForecastAndAnalyticsView: React.FC<ForecastAndAnalyticsViewProps> =
     expenseCategories,
   ]);
 
-  // What-If Simulator Calculations
   const whatIfResults = useMemo(() => {
     const monthlySavedFromCut =
       (analysis.variableExpenseSoFar / elapsedDays) * 30 * (cutVariablePct / 100);
@@ -401,7 +372,6 @@ export const ForecastAndAnalyticsView: React.FC<ForecastAndAnalyticsViewProps> =
         : 0;
     const netInvestableMonthly = Math.max(0, newMonthlyNet - extraMaaserMonthly);
 
-    // Compound future value over N years with monthly contributions
     const calcFV = (years: number) => {
       const r = annualYieldPct / 100 / 12;
       const n = years * 12;
@@ -427,7 +397,6 @@ export const ForecastAndAnalyticsView: React.FC<ForecastAndAnalyticsViewProps> =
     maaserSettings.ratePercent,
   ]);
 
-  // Installment Impact Calculation
   const installmentAnalysis = useMemo(() => {
     const total = parseFloat(purchaseTotal) || 0;
     const count = Math.max(1, parseInt(installmentsCount, 10) || 1);
@@ -455,568 +424,562 @@ export const ForecastAndAnalyticsView: React.FC<ForecastAndAnalyticsViewProps> =
 
   return (
     <div className="space-y-6">
-      {/* Top Control & Model Selection Bar */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-            <Activity className="w-5 h-5 text-blue-700" />
-            <span>
-              חיזוי תקציב לסוף החודש וניתוח קצב ריצה — {HE_MONTHS[viewMonth]} {viewYear}
-            </span>
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            חישוב מתמטי וסטטיסטי (100% מקומי וללא קריאות רשת) המבוסס על קצב העסקאות היומי, דפוסי ימי השבוע, והיסטוריית חודשים קודמים
-          </p>
+      {/* Clean Header & Controls Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="inline-flex bg-slate-200/70 p-1 rounded-xl">
+          <button
+            type="button"
+            onClick={() => setActiveSubSection('trajectory')}
+            className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+              activeSubSection === 'trajectory'
+                ? 'bg-white text-slate-900 shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            מסלול ותחזית סוף חודש
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveSubSection('categories')}
+            className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+              activeSubSection === 'categories'
+                ? 'bg-white text-slate-900 shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            תחזית לפי קטגוריות
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveSubSection('simulators')}
+            className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+              activeSubSection === 'simulators'
+                ? 'bg-white text-slate-900 shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            סימולטורים ובדיקת תשלומים
+          </button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Model Selector */}
-          <div className="flex items-center bg-slate-100 p-1 rounded-lg text-xs">
-            <button
-              type="button"
-              onClick={() => setForecastModel('smart_hybrid')}
-              className={`px-3 py-1.5 font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
-                forecastModel === 'smart_hybrid'
-                  ? 'bg-white text-blue-700 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              מודל משוקלל (קצב + היסטוריה)
-            </button>
-            <button
-              type="button"
-              onClick={() => setForecastModel('linear_run_rate')}
-              className={`px-3 py-1.5 font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
-                forecastModel === 'linear_run_rate'
-                  ? 'bg-white text-blue-700 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              קצב יומי ליניארי (Run-Rate)
-            </button>
-            <button
-              type="button"
-              onClick={() => setForecastModel('historical_baseline')}
-              className={`px-3 py-1.5 font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
-                forecastModel === 'historical_baseline'
-                  ? 'bg-white text-blue-700 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              ממוצע חודשים קודמים
-            </button>
-          </div>
+        {/* Model Selector */}
+        <div className="inline-flex items-center bg-slate-200/70 p-1 rounded-xl text-xs">
+          <button
+            type="button"
+            onClick={() => setForecastModel('smart_hybrid')}
+            className={`px-3 py-1.5 font-semibold rounded-lg transition-all whitespace-nowrap ${
+              forecastModel === 'smart_hybrid'
+                ? 'bg-white text-blue-600 shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            מודל משוקלל
+          </button>
+          <button
+            type="button"
+            onClick={() => setForecastModel('linear_run_rate')}
+            className={`px-3 py-1.5 font-semibold rounded-lg transition-all whitespace-nowrap ${
+              forecastModel === 'linear_run_rate'
+                ? 'bg-white text-blue-600 shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            קצב יומי (Run-Rate)
+          </button>
+          <button
+            type="button"
+            onClick={() => setForecastModel('historical_baseline')}
+            className={`px-3 py-1.5 font-semibold rounded-lg transition-all whitespace-nowrap ${
+              forecastModel === 'historical_baseline'
+                ? 'bg-white text-blue-600 shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            ממוצע היסטורי
+          </button>
         </div>
-      </div>
-
-      {/* Simulation Day Bar (Allows testing the forecast at any point in the month) */}
-      <div className="bg-white border border-slate-200 rounded-xl px-5 py-3.5 flex flex-wrap items-center justify-between gap-4 text-xs">
-        <div className="flex items-center gap-3">
-          <span className="font-semibold text-slate-800">
-            נקודת חיתוך לחישוב בחודש ({elapsedDays} ימים חלפו · {remainingDays} ימים נותרו לסוף החודש):
-          </span>
-          <input
-            type="range"
-            min={1}
-            max={daysInMonth}
-            value={simulatedDay}
-            onChange={(e) => setSimulatedDay(parseInt(e.target.value, 10))}
-            className="w-44 accent-blue-700 cursor-pointer"
-          />
-          <span className="font-mono-num font-bold text-blue-700">
-            יום {elapsedDays} מתוך {daysInMonth}
-          </span>
-        </div>
-
-        <label className="inline-flex items-center gap-2 cursor-pointer select-none text-slate-700 font-medium">
-          <input
-            type="checkbox"
-            checked={includeExpectedRecurring}
-            onChange={(e) => setIncludeExpectedRecurring(e.target.checked)}
-            className="rounded border-slate-300 text-blue-600"
-          />
-          <span>
-            שקלל הוראות קבע צפויות מהחודש הקודם שטרם ירדו ({formatILS(analysis.expectedRecurringExpenses)})
-          </span>
-        </label>
       </div>
 
       {/* 4-Column End-of-Month Projection KPI Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white border border-slate-200 rounded-xl p-5">
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-5">
           <div className="text-xs font-medium text-slate-500">
-            צפי הוצאות כולל לסוף החודש
+            צפי הוצאות לסוף החודש
           </div>
           <div className="text-2xl font-bold text-slate-900 mt-1.5 font-mono-num tabular-nums">
             {formatILS(analysis.projectedEndMonthExpense)}
           </div>
-          <div className="text-xs text-slate-500 mt-2 flex items-center gap-1.5">
-            <span>עד כה: {formatILS(analysis.totalExpenseSoFar)}</span>
-            <span aria-hidden="true">·</span>
-            <span>ממוצע היסטורי: {formatILS(analysis.avgHistTotalMonthlyExpense)}</span>
+          <div className="text-xs text-slate-400 mt-1.5">
+            עד כה: {formatILS(analysis.totalExpenseSoFar)}
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-xl p-5">
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-5">
           <div className="text-xs font-medium text-slate-500">
-            יתרה חזויה בסוף החודש (נטו)
+            יתרה חזויה בסוף החודש
           </div>
           <div
             className={`text-2xl font-bold mt-1.5 font-mono-num tabular-nums ${
-              analysis.projectedEndMonthBalance >= 0 ? 'text-emerald-700' : 'text-red-700'
+              analysis.projectedEndMonthBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'
             }`}
           >
             {formatILS(analysis.projectedEndMonthBalance)}
           </div>
-          <div className="text-xs text-slate-500 mt-2 flex items-center gap-1.5">
-            <span>צפי הכנסות: {formatILS(analysis.projectedEndMonthIncome)}</span>
-            <span aria-hidden="true">·</span>
-            <span>
-              {analysis.projectedEndMonthBalance >= 0 ? 'סיום בעודף' : 'אזהרת גירעון'}
-            </span>
+          <div className="text-xs text-slate-400 mt-1.5">
+            צפי הכנסות: {formatILS(analysis.projectedEndMonthIncome)}
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-xl p-5">
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-5">
           <div className="text-xs font-medium text-slate-500">
-            עמידה ביעד התקציב בסוף החודש
+            מול תקרת יעד התקציב
           </div>
           <div
             className={`text-2xl font-bold mt-1.5 font-mono-num tabular-nums ${
-              budgetDiff >= 0 ? 'text-emerald-700' : 'text-red-700'
+              budgetDiff >= 0 ? 'text-emerald-600' : 'text-rose-600'
             }`}
           >
             {budgetDiff >= 0
-              ? `+${formatILS(budgetDiff)} חיסכון`
-              : `−${formatILS(Math.abs(budgetDiff))} חריגה`}
+              ? `+${formatILS(budgetDiff)}`
+              : `−${formatILS(Math.abs(budgetDiff))}`}
           </div>
-          <div className="text-xs text-slate-500 mt-2">
-            מול תקרת יעד של {formatILS(analysis.effectiveTargetCap)}
+          <div className="text-xs text-slate-400 mt-1.5">
+            יעד: {formatILS(analysis.effectiveTargetCap)}
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-xl p-5">
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-5">
           <div className="text-xs font-medium text-slate-500">
-            תקציב יומי בטוח ל-{remainingDays} הימים הנותרים
+            תקציב יומי בטוח ({remainingDays} ימים נותרו)
           </div>
-          <div className="text-2xl font-bold text-blue-700 mt-1.5 font-mono-num tabular-nums">
-            {remainingDays > 0 ? `${formatILS(analysis.safeDailyAllowance)} / יום` : 'החודש הסתיים'}
+          <div className="text-2xl font-bold text-blue-600 mt-1.5 font-mono-num tabular-nums">
+            {remainingDays > 0 ? `${formatILS(analysis.safeDailyAllowance)}` : 'הסתיים'}
           </div>
-          <div className="text-xs text-slate-500 mt-2 flex items-center gap-1.5">
-            <span>קצב משתנות נוכחי: {formatILS(analysis.currentDailyVariableRate)}/יום</span>
+          <div className="text-xs text-slate-400 mt-1.5">
+            קצב משתנות כעת: {formatILS(analysis.currentDailyVariableRate)}/יום
           </div>
         </div>
       </div>
 
-      {/* Cumulative Spend Trajectory Chart + Upcoming Recurring Bills Radar */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Trajectory SVG Chart (8 cols) */}
-        <div className="lg:col-span-8 bg-white border border-slate-200 rounded-xl p-6">
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-            <div>
-              <h3 className="text-base font-bold text-slate-900">
-                מסלול הוצאות מצטבר ותחזית עד סוף החודש (יום 1 עד {daysInMonth})
-              </h3>
-              <p className="text-xs text-slate-500">
-                השוואה בין ההוצאה בפועל עד היום, המשך המסלול החזוי, וקו תקציב המטרה
-              </p>
-            </div>
-            <div className="flex items-center gap-4 text-xs">
-              <span className="text-blue-700 font-semibold">━ בפועל עד יום {elapsedDays}</span>
-              <span className="text-amber-600 font-semibold">┅ צפי עד סוף החודש</span>
-              <span className="text-slate-400 font-semibold">─ קו תקציב יעד</span>
-            </div>
-          </div>
-
-          <TrajectorySvgChart
-            series={analysis.dailySeries}
-            targetCap={analysis.effectiveTargetCap}
-            elapsedDays={elapsedDays}
-          />
-        </div>
-
-        {/* Upcoming Expected Recurring Bills Radar (4 cols) */}
-        <div className="lg:col-span-4 bg-white border border-slate-200 rounded-xl p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <CalendarClock className="w-4 h-4 text-blue-700" />
-              <span>חיובים והכנסות קבועות צפויות</span>
-            </h3>
-            <span className="text-xs font-mono-num text-slate-500">
-              {analysis.upcomingRecurring.length} זוהו
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 leading-relaxed">
-            על סמך ניתוח החודשים הקודמים, אלו תנועות קבועות שמופיעות אצלכם בדרך כלל אך טרם נרשמו בחודש זה:
-          </p>
-
-          {analysis.upcomingRecurring.length === 0 ? (
-            <div className="p-4 bg-emerald-50/60 border border-emerald-200 rounded-lg text-xs text-emerald-800 flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 shrink-0" />
-              <span>כל הוראות הקבע המוכרות מהחודש הקודם כבר נרשמו החודש!</span>
-            </div>
-          ) : (
-            <div className="space-y-2.5 max-h-[240px] overflow-y-auto">
-              {analysis.upcomingRecurring.map((item, idx) => (
-                <div
-                  key={`${item.template.id}-${idx}`}
-                  className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between gap-2 text-xs"
-                >
-                  <div className="min-w-0">
-                    <div className="font-bold text-slate-900 truncate">
-                      {item.template.categoryLabel} · {item.template.note || 'קבוע'}
-                    </div>
-                    <div className="text-slate-500 font-mono-num mt-0.5">
-                      צפוי סביב {item.expectedDate}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span
-                      className={`font-bold font-mono-num ${
-                        item.template.type === 'income'
-                          ? 'text-emerald-700'
-                          : 'text-red-700'
-                      }`}
-                    >
-                      {item.template.type === 'income' ? '+' : '−'}
-                      {formatILS(item.template.amount)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onQuickAddTransaction({
-                          type: item.template.type,
-                          category: item.template.category,
-                          categoryLabel: item.template.categoryLabel,
-                          amount: item.template.amount,
-                          note: item.template.note,
-                          date: item.expectedDate,
-                          paymentMethod: item.template.paymentMethod,
-                          isRecurring: true,
-                          isMaaserEligible: item.template.isMaaserEligible,
-                          isDeductibleFromIncome: item.template.isDeductibleFromIncome,
-                          isMaaserPayment: item.template.isMaaserPayment,
-                        })
-                      }
-                      title="רשום תנועה זו כעת בחודש הנוכחי"
-                      className="px-2 py-1 text-[11px] font-semibold bg-white border border-slate-300 hover:bg-slate-100 rounded text-slate-800 flex items-center gap-1"
-                    >
-                      <Plus className="w-3 h-3" />
-                      <span>רשום</span>
-                    </button>
-                  </div>
+      {/* SUB-SECTION 1: TRAJECTORY & UPCOMING BILLS */}
+      {activeSubSection === 'trajectory' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* Trajectory SVG Chart (8 cols) */}
+            <div className="lg:col-span-8 bg-white border border-slate-200/80 rounded-2xl p-6 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    מסלול הוצאות מצטבר ותחזית עד סוף החודש
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    השוואה בין ההוצאה בפועל עד יום {elapsedDays}, המשך המסלול החזוי, וקו תקציב המטרה
+                  </p>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Category-Level End-of-Month Projection Table */}
-      <div className="bg-white border border-slate-200 rounded-xl p-6">
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-          <div>
-            <h3 className="text-base font-bold text-slate-900">
-              תחזית סוף חודש מפורטת לפי קטגוריות הוצאה
-            </h3>
-            <p className="text-xs text-slate-500">
-              השוואת הוצאה עד כה, קצב יומי משתנה, ממוצע חודשים קודמים, וצפי סיום מול היעד החודשי
-            </p>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="border-b border-slate-200 text-xs text-slate-500 bg-slate-50">
-                <th className="py-2.5 px-3 text-right font-semibold">קטגוריה</th>
-                <th className="py-2.5 px-3 text-left font-semibold">הוצאה עד כה</th>
-                <th className="py-2.5 px-3 text-left font-semibold">קצב יומי (משתנות)</th>
-                <th className="py-2.5 px-3 text-left font-semibold">ממוצע חודשים קודמים</th>
-                <th className="py-2.5 px-3 text-left font-semibold">צפי לסוף החודש</th>
-                <th className="py-2.5 px-3 text-left font-semibold">יעד תקציב</th>
-                <th className="py-2.5 px-3 text-left font-semibold">חיסכון / חריגה חזויה</th>
-                <th className="py-2.5 px-3 text-left font-semibold">מותר ליום (יתרת החודש)</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {analysis.categoryForecasts.map((row) => {
-                const isOverGoal = row.goal > 0 && row.projectedTotal > row.goal;
-                return (
-                  <tr key={row.category.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3 px-3 font-semibold text-slate-900">
-                      <div className="flex items-center gap-2">
-                        <span>{row.category.label}</span>
-                        {row.creepRatio > 0.15 && (
-                          <span className="text-[11px] text-amber-700 font-normal">
-                            · זחילה (+{Math.round(row.creepRatio * 100)}% מהממוצע)
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-3 px-3 text-left font-mono-num tabular-nums text-slate-700">
-                      {formatILS(row.spentSoFar)}
-                    </td>
-                    <td className="py-3 px-3 text-left font-mono-num tabular-nums text-slate-600 text-xs">
-                      {formatILS(row.dailyRate)} / יום
-                    </td>
-                    <td className="py-3 px-3 text-left font-mono-num tabular-nums text-slate-500">
-                      {formatILS(row.histAvg)}
-                    </td>
-                    <td className="py-3 px-3 text-left font-bold font-mono-num tabular-nums text-slate-900">
-                      {formatILS(row.projectedTotal)}
-                    </td>
-                    <td className="py-3 px-3 text-left font-mono-num tabular-nums text-slate-600">
-                      {row.goal > 0 ? formatILS(row.goal) : '—'}
-                    </td>
-                    <td className="py-3 px-3 text-left font-bold font-mono-num tabular-nums">
-                      {row.goal > 0 ? (
-                        <span className={isOverGoal ? 'text-red-600' : 'text-emerald-700'}>
-                          {isOverGoal
-                            ? `−${formatILS(Math.abs(row.variance))} חריגה`
-                            : `+${formatILS(row.variance)} יתרה`}
-                        </span>
-                      ) : (
-                        <span className="text-slate-400 text-xs">ללא יעד</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-3 text-left font-mono-num tabular-nums text-xs font-semibold text-blue-700">
-                      {row.goal > 0 && remainingDays > 0
-                        ? `${formatILS(row.safeDaily)} / יום`
-                        : '—'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Additional Offline Smart Tools Grid: 1) What-If Simulator, 2) Installment Planner, 3) Weekday Profile */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Interactive What-If & Compound Wealth Simulator (5 cols) */}
-        <div className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-6 space-y-4">
-          <div className="flex items-center gap-2">
-            <Sliders className="w-4 h-4 text-blue-700" />
-            <h3 className="text-base font-bold text-slate-900">
-              סימולטור "מה אם" וצמיחה רב-שנתית
-            </h3>
-          </div>
-          <p className="text-xs text-slate-500">
-            בדקו כיצד התאמה קלה בהוצאות המשתנות או בהכנסה החודשית תשפיע על סוף החודש ועל החיסכון המצטבר:
-          </p>
-
-          <div className="space-y-3 text-xs">
-            <div>
-              <div className="flex justify-between mb-1 font-medium text-slate-700">
-                <span>הפחתת הוצאות משתנות:</span>
-                <span className="font-mono-num font-bold text-blue-700">
-                  {cutVariablePct}% (חיסכון של {formatILS(whatIfResults.monthlySavedFromCut)} לחודש)
-                </span>
+                <div className="flex items-center gap-4 text-xs">
+                  <span className="text-blue-600 font-semibold">━ בפועל</span>
+                  <span className="text-amber-600 font-semibold">┅ צפי</span>
+                  <span className="text-slate-400 font-semibold">─ תקרת יעד</span>
+                </div>
               </div>
-              <input
-                type="range"
-                min={0}
-                max={50}
-                step={5}
-                value={cutVariablePct}
-                onChange={(e) => setCutVariablePct(parseInt(e.target.value, 10))}
-                className="w-full accent-blue-700 cursor-pointer"
+
+              <TrajectorySvgChart
+                series={analysis.dailySeries}
+                targetCap={analysis.effectiveTargetCap}
+                elapsedDays={elapsedDays}
               />
-            </div>
 
-            <div>
-              <div className="flex justify-between mb-1 font-medium text-slate-700">
-                <span>תוספת הכנסה חודשית נטו:</span>
-                <span className="font-mono-num font-bold text-emerald-700">
-                  +{formatILS(extraIncomeMonthly)}
-                </span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={10000}
-                step={500}
-                value={extraIncomeMonthly}
-                onChange={(e) => setExtraIncomeMonthly(parseInt(e.target.value, 10))}
-                className="w-full accent-emerald-600 cursor-pointer"
-              />
-            </div>
-
-            <div>
-              <div className="flex justify-between mb-1 font-medium text-slate-700">
-                <span>תשואה שנתית משוערת על החיסכון (פק״מ / שוק ההון):</span>
-                <span className="font-mono-num font-bold text-slate-900">{annualYieldPct}%</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={10}
-                step={0.5}
-                value={annualYieldPct}
-                onChange={(e) => setAnnualYieldPct(parseFloat(e.target.value))}
-                className="w-full accent-slate-800 cursor-pointer"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2 pt-3 border-t border-slate-100 text-center">
-            <div className="p-2.5 bg-slate-50 rounded-lg">
-              <div className="text-[11px] text-slate-500">חיסכון בעוד שנה</div>
-              <div className="text-sm font-bold text-slate-900 font-mono-num mt-0.5">
-                {formatILS(whatIfResults.fv1Year)}
-              </div>
-            </div>
-            <div className="p-2.5 bg-slate-50 rounded-lg">
-              <div className="text-[11px] text-slate-500">בעוד 3 שנים</div>
-              <div className="text-sm font-bold text-blue-700 font-mono-num mt-0.5">
-                {formatILS(whatIfResults.fv3Years)}
-              </div>
-            </div>
-            <div className="p-2.5 bg-slate-50 rounded-lg">
-              <div className="text-[11px] text-slate-500">בעוד 5 שנים</div>
-              <div className="text-sm font-bold text-emerald-700 font-mono-num mt-0.5">
-                {formatILS(whatIfResults.fv5Years)}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Installment Purchase Impact Checker (4 cols) */}
-        <div className="lg:col-span-4 bg-white border border-slate-200 rounded-xl p-6 space-y-4">
-          <div className="flex items-center gap-2">
-            <CreditCard className="w-4 h-4 text-blue-700" />
-            <h3 className="text-base font-bold text-slate-900">
-              בדיקת עסקה בפריסת תשלומים
-            </h3>
-          </div>
-          <p className="text-xs text-slate-500">
-            שוקלים רכישה גדולה בתשלומים? בדקו מראש אם תחזית סוף החודש שלכם מסוגלת לספוג את ההחזר החודשי:
-          </p>
-
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">סכום עסקה כולל (₪)</label>
-              <input
-                type="number"
-                min="100"
-                step="100"
-                value={purchaseTotal}
-                onChange={(e) => setPurchaseTotal(e.target.value)}
-                className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg font-mono-num"
-              />
-            </div>
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">מספר תשלומים</label>
-              <select
-                value={installmentsCount}
-                onChange={(e) => setInstallmentsCount(e.target.value)}
-                className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg bg-white font-mono-num"
-              >
-                {[1, 2, 3, 4, 6, 10, 12, 18, 24, 36].map((n) => (
-                  <option key={n} value={n}>
-                    {n} תשלומים
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">שיוך לקטגוריה</label>
-            <select
-              value={installmentCategory}
-              onChange={(e) => setInstallmentCategory(e.target.value)}
-              className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg bg-white"
-            >
-              {expenseCategories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div
-            className={`p-3.5 rounded-xl border text-xs space-y-1.5 ${
-              installmentAnalysis.isSafeOverall
-                ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
-                : 'bg-amber-50/80 border-amber-200 text-amber-950'
-            }`}
-          >
-            <div className="flex items-center justify-between font-bold">
-              <span>החזר חודשי לעסקה:</span>
-              <span className="font-mono-num text-sm">
-                {formatILS(installmentAnalysis.monthlyPayment)} / חודש
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>יתרה חזויה בסוף החודש לאחר העסקה:</span>
-              <span className="font-mono-num font-semibold">
-                {formatILS(installmentAnalysis.newProjectedBalance)}
-              </span>
-            </div>
-            <div className="pt-1 font-medium flex items-center gap-1.5">
-              {installmentAnalysis.isSafeOverall ? (
-                <>
-                  <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
-                  <span>העסקה בטוחה לתזרים ועומדת ביעדי הקטגוריה.</span>
-                </>
-              ) : (
-                <>
-                  <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
-                  <span>
-                    {installmentAnalysis.exceedsCatGoal
-                      ? 'שימו לב: העסקה תגרום לחריגה ביעד הקטגוריה החודשי.'
-                      : 'אזהרה: העסקה עלולה להעביר את סוף החודש לגירעון.'}
+              {/* Clean Cutoff Day Slider Footer */}
+              <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-600">
+                <div className="flex items-center gap-3">
+                  <span>בדיקת תחזית ליום בחודש:</span>
+                  <input
+                    type="range"
+                    min={1}
+                    max={daysInMonth}
+                    value={simulatedDay}
+                    onChange={(e) => setSimulatedDay(parseInt(e.target.value, 10))}
+                    className="w-36 accent-blue-600 cursor-pointer"
+                  />
+                  <span className="font-mono-num font-bold text-slate-900">
+                    יום {elapsedDays} מתוך {daysInMonth}
                   </span>
-                </>
+                </div>
+
+                <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={includeExpectedRecurring}
+                    onChange={(e) => setIncludeExpectedRecurring(e.target.checked)}
+                    className="rounded border-slate-300 text-blue-600"
+                  />
+                  <span>שקלל הוראות קבע צפויות ({formatILS(analysis.expectedRecurringExpenses)})</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Upcoming Expected Recurring Bills Radar (4 cols) */}
+            <div className="lg:col-span-4 bg-white border border-slate-200/80 rounded-2xl p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <CalendarClock className="w-4 h-4 text-blue-600" />
+                  <span>חיובים קבועים שטרם נרשמו</span>
+                </h3>
+                <span className="text-xs font-mono-num text-slate-400">
+                  {analysis.upcomingRecurring.length} זוהו
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                תנועות קבועות מהחודש הקודם שטרם נרשמו בחודש {HE_MONTHS[viewMonth]}:
+              </p>
+
+              {analysis.upcomingRecurring.length === 0 ? (
+                <div className="p-4 bg-emerald-50/60 border border-emerald-200/80 rounded-xl text-xs text-emerald-800 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>כל החיובים הקבועים מהחודש הקודם כבר עודכנו!</span>
+                </div>
+              ) : (
+                <div className="space-y-2.5 max-h-[240px] overflow-y-auto">
+                  {analysis.upcomingRecurring.map((item, idx) => (
+                    <div
+                      key={`${item.template.id}-${idx}`}
+                      className="p-3 bg-slate-50 border border-slate-200/70 rounded-xl flex items-center justify-between gap-2 text-xs"
+                    >
+                      <div className="min-w-0">
+                        <div className="font-semibold text-slate-900 truncate">
+                          {item.template.note || item.template.categoryLabel}
+                        </div>
+                        <div className="text-slate-400 font-mono-num mt-0.5">
+                          צפוי: {item.expectedDate}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span
+                          className={`font-bold font-mono-num ${
+                            item.template.type === 'income'
+                              ? 'text-emerald-600'
+                              : 'text-rose-600'
+                          }`}
+                        >
+                          {item.template.type === 'income' ? '+' : '−'}
+                          {formatILS(item.template.amount)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onQuickAddTransaction({
+                              type: item.template.type,
+                              category: item.template.category,
+                              categoryLabel: item.template.categoryLabel,
+                              amount: item.template.amount,
+                              note: item.template.note,
+                              date: item.expectedDate,
+                              paymentMethod: item.template.paymentMethod,
+                              isRecurring: true,
+                              isMaaserEligible: item.template.isMaaserEligible,
+                              isDeductibleFromIncome: item.template.isDeductibleFromIncome,
+                              isMaaserPayment: item.template.isMaaserPayment,
+                            })
+                          }
+                          className="px-2.5 py-1 text-[11px] font-semibold bg-white border border-slate-200 hover:bg-slate-100 rounded-lg text-slate-700 flex items-center gap-1"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>רשום</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </div>
         </div>
+      )}
 
-        {/* Weekday Spending Behavior Profile (3 cols) */}
-        <div className="lg:col-span-3 bg-white border border-slate-200 rounded-xl p-6 space-y-4">
-          <div className="flex items-center gap-2">
-            <Layers className="w-4 h-4 text-blue-700" />
-            <h3 className="text-base font-bold text-slate-900">דפוס הוצאות לפי ימי השבוע</h3>
+      {/* SUB-SECTION 2: CATEGORY FORECAST TABLE & WEEKDAY PROFILE */}
+      {activeSubSection === 'categories' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <div className="lg:col-span-8 bg-white border border-slate-200/80 rounded-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100">
+              <h3 className="text-sm font-bold text-slate-900">
+                תחזית סוף חודש לפי קטגוריות הוצאה
+              </h3>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-100 text-xs text-slate-400 bg-slate-50/50">
+                    <th className="py-3 px-5 text-right font-medium">קטגוריה</th>
+                    <th className="py-3 px-4 text-left font-medium">עד כה</th>
+                    <th className="py-3 px-4 text-left font-medium">ממוצע היסטורי</th>
+                    <th className="py-3 px-4 text-left font-medium">צפי סוף חודש</th>
+                    <th className="py-3 px-4 text-left font-medium">יעד</th>
+                    <th className="py-3 px-5 text-left font-medium">הפרש חזוי</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {analysis.categoryForecasts.map((row) => {
+                    const isOverGoal = row.goal > 0 && row.projectedTotal > row.goal;
+                    return (
+                      <tr key={row.category.id} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-3.5 px-5 font-semibold text-slate-900">
+                          {row.category.label}
+                        </td>
+                        <td className="py-3.5 px-4 text-left font-mono-num tabular-nums text-slate-600">
+                          {formatILS(row.spentSoFar)}
+                        </td>
+                        <td className="py-3.5 px-4 text-left font-mono-num tabular-nums text-slate-400">
+                          {formatILS(row.histAvg)}
+                        </td>
+                        <td className="py-3.5 px-4 text-left font-bold font-mono-num tabular-nums text-slate-900">
+                          {formatILS(row.projectedTotal)}
+                        </td>
+                        <td className="py-3.5 px-4 text-left font-mono-num tabular-nums text-slate-500">
+                          {row.goal > 0 ? formatILS(row.goal) : '—'}
+                        </td>
+                        <td className="py-3.5 px-5 text-left font-bold font-mono-num tabular-nums">
+                          {row.goal > 0 ? (
+                            <span className={isOverGoal ? 'text-rose-600' : 'text-emerald-600'}>
+                              {isOverGoal
+                                ? `−${formatILS(Math.abs(row.variance))}`
+                                : `+${formatILS(row.variance)}`}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300 text-xs">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-          <p className="text-xs text-slate-500">
-            זיהוי הימים בשבוע שבהם מרוכזות מרבית ההוצאות המשתנות (כגון קניות לקראת שבת):
-          </p>
 
-          <div className="space-y-2.5">
-            {HE_DAYS.map((dayLabel, idx) => {
-              const maxWd = Math.max(1, ...analysis.weekdaySpend);
-              const amt = analysis.weekdaySpend[idx];
-              const pct = Math.round((amt / maxWd) * 100);
-              return (
-                <div key={dayLabel} className="text-xs">
-                  <div className="flex justify-between mb-1">
-                    <span className="font-medium text-slate-700">יום {dayLabel}</span>
-                    <span className="font-mono-num text-slate-600">{formatILS(amt)}</span>
+          <div className="lg:col-span-4 bg-white border border-slate-200/80 rounded-2xl p-6 space-y-4">
+            <div className="flex items-center gap-2">
+              <Layers className="w-4 h-4 text-blue-600" />
+              <h3 className="text-sm font-bold text-slate-900">פרופיל הוצאות לפי ימי השבוע</h3>
+            </div>
+            <p className="text-xs text-slate-500">
+              הימים בשבוע שבהם מרוכזות מרבית ההוצאות המשתנות:
+            </p>
+
+            <div className="space-y-3">
+              {HE_DAYS.map((dayLabel, idx) => {
+                const maxWd = Math.max(1, ...analysis.weekdaySpend);
+                const amt = analysis.weekdaySpend[idx];
+                const pct = Math.round((amt / maxWd) * 100);
+                return (
+                  <div key={dayLabel} className="text-xs">
+                    <div className="flex justify-between mb-1">
+                      <span className="font-medium text-slate-700">יום {dayLabel}</span>
+                      <span className="font-mono-num text-slate-500">{formatILS(amt)}</span>
+                    </div>
+                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-blue-600 rounded-full"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-blue-600 rounded-full"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* SUB-SECTION 3: SIMULATORS (WHAT-IF & INSTALLMENTS) */}
+      {activeSubSection === 'simulators' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+          {/* Interactive What-If & Compound Wealth Simulator */}
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-6 space-y-5">
+            <div className="flex items-center gap-2">
+              <Sliders className="w-4 h-4 text-blue-600" />
+              <h3 className="text-sm font-bold text-slate-900">
+                סימולטור "מה אם" וצמיחה רב-שנתית
+              </h3>
+            </div>
+            <p className="text-xs text-slate-500">
+              בדקו כיצד הפחתה בהוצאות המשתנות או תוספת הכנסה ישפיעו על החיסכון המצטבר:
+            </p>
+
+            <div className="space-y-4 text-xs">
+              <div>
+                <div className="flex justify-between mb-1.5 font-medium text-slate-700">
+                  <span>הפחתת הוצאות משתנות:</span>
+                  <span className="font-mono-num font-bold text-blue-600">
+                    {cutVariablePct}% (+{formatILS(whatIfResults.monthlySavedFromCut)} לחודש)
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={50}
+                  step={5}
+                  value={cutVariablePct}
+                  onChange={(e) => setCutVariablePct(parseInt(e.target.value, 10))}
+                  className="w-full accent-blue-600 cursor-pointer"
+                />
+              </div>
+
+              <div>
+                <div className="flex justify-between mb-1.5 font-medium text-slate-700">
+                  <span>תוספת הכנסה חודשית נטו:</span>
+                  <span className="font-mono-num font-bold text-emerald-600">
+                    +{formatILS(extraIncomeMonthly)}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={10000}
+                  step={500}
+                  value={extraIncomeMonthly}
+                  onChange={(e) => setExtraIncomeMonthly(parseInt(e.target.value, 10))}
+                  className="w-full accent-emerald-600 cursor-pointer"
+                />
+              </div>
+
+              <div>
+                <div className="flex justify-between mb-1.5 font-medium text-slate-700">
+                  <span>תשואה שנתית משוערת על החיסכון:</span>
+                  <span className="font-mono-num font-bold text-slate-900">{annualYieldPct}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={10}
+                  step={0.5}
+                  value={annualYieldPct}
+                  onChange={(e) => setAnnualYieldPct(parseFloat(e.target.value))}
+                  className="w-full accent-slate-800 cursor-pointer"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3 pt-3 border-t border-slate-100 text-center">
+              <div className="p-3 bg-slate-50 rounded-xl">
+                <div className="text-[11px] text-slate-500">חיסכון בעוד שנה</div>
+                <div className="text-sm font-bold text-slate-900 font-mono-num mt-1">
+                  {formatILS(whatIfResults.fv1Year)}
+                </div>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl">
+                <div className="text-[11px] text-slate-500">בעוד 3 שנים</div>
+                <div className="text-sm font-bold text-blue-600 font-mono-num mt-1">
+                  {formatILS(whatIfResults.fv3Years)}
+                </div>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl">
+                <div className="text-[11px] text-slate-500">בעוד 5 שנים</div>
+                <div className="text-sm font-bold text-emerald-600 font-mono-num mt-1">
+                  {formatILS(whatIfResults.fv5Years)}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Installment Purchase Impact Checker */}
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-6 space-y-5">
+            <div className="flex items-center gap-2">
+              <CreditCard className="w-4 h-4 text-blue-600" />
+              <h3 className="text-sm font-bold text-slate-900">
+                בדיקת כדאיות עסקה בתשלומים
+              </h3>
+            </div>
+            <p className="text-xs text-slate-500">
+              בדקו מראש אם תחזית סוף החודש שלכם מסוגלת לספוג רכישה חדשה בפריסת תשלומים:
+            </p>
+
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <label className="block font-medium text-slate-700 mb-1">סכום עסקה כולל (₪)</label>
+                <input
+                  type="number"
+                  min="100"
+                  step="100"
+                  value={purchaseTotal}
+                  onChange={(e) => setPurchaseTotal(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl font-mono-num focus:outline-none focus:border-blue-600"
+                />
+              </div>
+              <div>
+                <label className="block font-medium text-slate-700 mb-1">מספר תשלומים</label>
+                <select
+                  value={installmentsCount}
+                  onChange={(e) => setInstallmentsCount(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl bg-white font-mono-num focus:outline-none focus:border-blue-600"
+                >
+                  {[1, 2, 3, 4, 6, 10, 12, 18, 24, 36].map((n) => (
+                    <option key={n} value={n}>
+                      {n} תשלומים
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1">שיוך לקטגוריה</label>
+              <select
+                value={installmentCategory}
+                onChange={(e) => setInstallmentCategory(e.target.value)}
+                className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-blue-600"
+              >
+                {expenseCategories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div
+              className={`p-4 rounded-xl border text-xs space-y-2 ${
+                installmentAnalysis.isSafeOverall
+                  ? 'bg-emerald-50/60 border-emerald-200 text-emerald-950'
+                  : 'bg-amber-50/70 border-amber-200 text-amber-950'
+              }`}
+            >
+              <div className="flex items-center justify-between font-bold">
+                <span>החזר חודשי לעסקה:</span>
+                <span className="font-mono-num text-sm">
+                  {formatILS(installmentAnalysis.monthlyPayment)} / חודש
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>יתרה חזויה בסוף החודש לאחר העסקה:</span>
+                <span className="font-mono-num font-semibold">
+                  {formatILS(installmentAnalysis.newProjectedBalance)}
+                </span>
+              </div>
+              <div className="pt-1 font-medium flex items-center gap-1.5">
+                {installmentAnalysis.isSafeOverall ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>העסקה בטוחה לתזרים ועומדת ביעדי הקטגוריה.</span>
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>
+                      {installmentAnalysis.exceedsCatGoal
+                        ? 'שימו לב: העסקה תגרום לחריגה ביעד הקטגוריה החודשי.'
+                        : 'אזהרה: העסקה עלולה להעביר את סוף החודש לגירעון.'}
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
-
-/* ============================================================================
- * SVG CUMULATIVE TRAJECTORY CHART
- * ============================================================================ */
 
 function TrajectorySvgChart({
   series,
@@ -1033,7 +996,7 @@ function TrajectorySvgChart({
   elapsedDays: number;
 }) {
   const width = 680;
-  const height = 230;
+  const height = 220;
   const padLeft = 52;
   const padRight = 20;
   const padTop = 18;
@@ -1072,7 +1035,6 @@ function TrajectorySvgChart({
       role="img"
       aria-label="גרף תחזית הוצאות מצטברת עד סוף החודש"
     >
-      {/* Horizontal Grid Lines */}
       {[0, 0.25, 0.5, 0.75, 1].map((frac) => {
         const val = maxY * frac;
         const y = toY(val);
@@ -1100,7 +1062,6 @@ function TrajectorySvgChart({
         );
       })}
 
-      {/* Linear Budget Pace Diagonal */}
       <line
         x1={toX(1)}
         y1={toY(0)}
@@ -1111,13 +1072,12 @@ function TrajectorySvgChart({
         strokeDasharray="3 3"
       />
 
-      {/* Horizontal Total Budget Ceiling Line */}
       <line
         x1={padLeft}
         y1={targetCapY}
         x2={width - padRight}
         y2={targetCapY}
-        stroke="#ef4444"
+        stroke="#f43f5e"
         strokeWidth="1"
         strokeDasharray="4 4"
       />
@@ -1126,13 +1086,12 @@ function TrajectorySvgChart({
         y={targetCapY - 5}
         textAnchor="end"
         fontSize="10"
-        fill="#dc2626"
+        fill="#e11d48"
         className="font-mono-num"
       >
-        תקרת יעד: {formatILS(targetCap)}
+        יעד: {formatILS(targetCap)}
       </text>
 
-      {/* Today / Cutoff Vertical Marker */}
       <line
         x1={cutoffX}
         y1={padTop}
@@ -1142,17 +1101,15 @@ function TrajectorySvgChart({
         strokeWidth="1.5"
       />
 
-      {/* Actual Cumulative Spend Line */}
       {actualPoints && (
         <polyline
           fill="none"
-          stroke="#1d4ed8"
+          stroke="#2563eb"
           strokeWidth="2.5"
           points={actualPoints}
         />
       )}
 
-      {/* Projected Spend Line */}
       {projectedPoints && (
         <polyline
           fill="none"
@@ -1163,7 +1120,6 @@ function TrajectorySvgChart({
         />
       )}
 
-      {/* X-Axis Day Ticks */}
       {series
         .filter((s) => s.day === 1 || s.day % 5 === 0 || s.day === series.length)
         .map((s) => (
@@ -1173,7 +1129,7 @@ function TrajectorySvgChart({
             y={height - 8}
             textAnchor="middle"
             fontSize="10"
-            fill="#64748b"
+            fill="#94a3b8"
             className="font-mono-num"
           >
             יום {s.day}
