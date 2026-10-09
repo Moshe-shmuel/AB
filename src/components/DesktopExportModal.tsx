@@ -181,7 +181,36 @@ export const DesktopExportModal: React.FC<DesktopExportModalProps> = ({
           )}
         </div>
 
-        {/* Section 3: Data Management (Demo / Clear) */}
+        {/* Section 3: GitHub Actions Single-File Build & Release Info */}
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
+          <div className="text-sm font-bold text-slate-900">
+            3. אוטומציית GitHub Actions — קימפול לקובץ בודד בכל קומיט ומהדורה (Release)
+          </div>
+          <p className="text-xs text-slate-600 leading-relaxed">
+            הפרויקט כולל את קובץ הריצה{' '}
+            <code className="px-1.5 py-0.5 bg-white border border-slate-200 rounded font-mono-num">
+              .github/workflows/build-and-release.yml
+            </code>{' '}
+            וסקריפט האיחוד{' '}
+            <code className="px-1.5 py-0.5 bg-white border border-slate-200 rounded font-mono-num">
+              npm run build:single
+            </code>
+            :
+          </p>
+          <ul className="text-xs text-slate-600 list-disc list-inside space-y-1">
+            <li>
+              <strong>בכל הוספת קומיט (Push):</strong> המערכת מתקמפלת אוטומטית ומייצרת Artifact של קובץ יחיד עצמאי (
+              <code className="font-mono-num">Budget-Maaser-Pro-SingleFile.html</code> ו-
+              <code className="font-mono-num">Budget-Maaser-Pro-Desktop.hta</code>).
+            </li>
+            <li>
+              <strong>ביצירת מהדורה / תג חדש (למשל <code className="font-mono-num">v1.0.0</code>):</strong>{' '}
+              הקובץ הבודד מצורף אוטומטית לנכסי המהדורה (GitHub Release Assets) להורדה ישירה.
+            </li>
+          </ul>
+        </div>
+
+        {/* Section 4: Data Management (Demo / Clear) */}
         <div className="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <button
