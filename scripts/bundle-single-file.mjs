@@ -33,6 +33,7 @@ html = html.replace(
 );
 
 // 2. Extract and inline all local JS <script ... src="..."></script> and place right before </body>
+// IMPORTANT: Use a function callback in .replace() so '$&' and "$'" in minified React code are NEVER mutated!
 const inlineScripts = [];
 html = html.replace(
   /<script\b[^>]*src=["']([^"']+\.js)["'][^>]*>\s*<\/script>/gi,
@@ -43,7 +44,7 @@ html = html.replace(
       const jsContent = fs
         .readFileSync(jsFile, 'utf-8')
         .replace(/<\/script>/gi, '<\\/script>');
-      inlineScripts.push(`<script type="module">\n${jsContent}\n</script>`);
+      inlineScripts.push(`<script>\n${jsContent}\n</script>`);
       return '';
     }
     return fullMatch;
@@ -51,7 +52,8 @@ html = html.replace(
 );
 
 if (inlineScripts.length > 0) {
-  html = html.replace('</body>', `${inlineScripts.join('\n')}\n  </body>`);
+  const scriptsBlock = inlineScripts.join('\n');
+  html = html.replace(/<\/body>/i, () => `${scriptsBlock}\n  </body>`);
 }
 
 // 3. Write standalone single-file HTML

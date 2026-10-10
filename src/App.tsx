@@ -116,7 +116,16 @@ export default function App() {
   const [a11yPrefs, setA11yPrefs] = useState<AccessibilityPreferences>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.A11Y_PREFS);
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') {
+          return {
+            fontScale: parsed.fontScale || 'normal',
+            highContrast: Boolean(parsed.highContrast),
+            simplifiedMode: Boolean(parsed.simplifiedMode),
+          };
+        }
+      }
     } catch {}
     return {
       fontScale: 'normal',

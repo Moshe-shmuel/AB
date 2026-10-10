@@ -122,6 +122,13 @@ export async function exportStandaloneSingleFileHTML(
   payload: AppBackupPayload
 ): Promise<boolean> {
   try {
+    const closeScriptTag = '</scr' + 'ipt>';
+    const openScriptModuleTag = '<scr' + 'ipt type="module">';
+    const openScriptTag = '<scr' + 'ipt>';
+    const closeStyleTag = '</st' + 'yle>';
+    const closeBodyTag = '</bo' + 'dy>';
+    const closeHtmlTag = '</ht' + 'ml>';
+
     // 1. Collect all active CSS rules / stylesheets from the live document
     const cssChunks: string[] = [];
 
@@ -148,12 +155,11 @@ export async function exportStandaloneSingleFileHTML(
       }
     }
 
-    // 2. Collect the application's JS bundle (either already inlined or external script[type="module"])
+    // 2. Collect the application's JS bundle
     const jsChunks: string[] = [];
     const scripts = Array.from(document.querySelectorAll<HTMLScriptElement>('script'));
     for (const scriptEl of scripts) {
       if (scriptEl.src) {
-        // Skip Vite dev client scripts if running in dev server
         if (scriptEl.src.includes('@vite/client') || scriptEl.src.includes('@react-refresh')) {
           continue;
         }
@@ -161,9 +167,8 @@ export async function exportStandaloneSingleFileHTML(
           const res = await fetch(scriptEl.src);
           if (res.ok) {
             const text = await res.text();
-            // Only inline compiled bundles (skip raw /src/main.tsx in unbundled dev mode)
             if (!scriptEl.src.endsWith('/src/main.tsx')) {
-              jsChunks.push(text.replace(/<\/script>/gi, '<\\/script>'));
+              jsChunks.push(text.split(closeScriptTag).join('<\\/scr' + 'ipt>'));
             }
           }
         } catch {
@@ -174,53 +179,56 @@ export async function exportStandaloneSingleFileHTML(
         scriptEl.textContent &&
         !scriptEl.textContent.includes('injectIntoGlobalHook')
       ) {
-        jsChunks.push(scriptEl.textContent.replace(/<\/script>/gi, '<\\/script>'));
+        jsChunks.push(scriptEl.textContent.split(closeScriptTag).join('<\\/scr' + 'ipt>'));
       }
     }
 
-    // If running inside unbundled Vite dev server (`npm run dev`), we cannot inline raw `.tsx` files directly in the browser without building.
     if (jsChunks.length === 0) {
       return false;
     }
 
-    const safePayloadJson = JSON.stringify(payload).replace(/<\/script>/gi, '<\\/script>');
+    const safePayloadJson = JSON.stringify(payload).split(closeScriptTag).join('<\\/scr' + 'ipt>');
 
-    const bootstrapStorageScript = `<script>
-(function() {
-  try {
-    var SNAPSHOT = ${safePayloadJson};
-    if (!localStorage.getItem('budget_pro:initialized_v4')) {
-      localStorage.setItem('budget_pro:initialized_v4', 'true');
-      localStorage.setItem('budget_pro:transactions', JSON.stringify(SNAPSHOT.transactions || []));
-      localStorage.setItem('budget_pro:maaser_donations', JSON.stringify(SNAPSHOT.maaserDonations || []));
-      if (SNAPSHOT.maaserSettings) {
-        localStorage.setItem('budget_pro:maaser_settings', JSON.stringify(SNAPSHOT.maaserSettings));
-      }
-      localStorage.setItem('budget_pro:goals', JSON.stringify(SNAPSHOT.goals || {}));
-      localStorage.setItem('budget_pro:custom_categories', JSON.stringify(SNAPSHOT.customCategories || []));
-      localStorage.setItem('budget_pro:savings_funds', JSON.stringify(SNAPSHOT.savingsFunds || []));
-      localStorage.setItem('budget_pro:recurring_templates', JSON.stringify(SNAPSHOT.recurringTemplates || []));
-    }
-  } catch (e) {}
-})();
-</script>`;
+    const bootstrapStorageScript = [
+      openScriptTag,
+      '(function() {',
+      '  try {',
+      '    var SNAPSHOT = ' + safePayloadJson + ';',
+      '    if (!localStorage.getItem("budget_pro:initialized_v4")) {',
+      '      localStorage.setItem("budget_pro:initialized_v4", "true");',
+      '      localStorage.setItem("budget_pro:transactions", JSON.stringify(SNAPSHOT.transactions || []));',
+      '      localStorage.setItem("budget_pro:maaser_donations", JSON.stringify(SNAPSHOT.maaserDonations || []));',
+      '      if (SNAPSHOT.maaserSettings) {',
+      '        localStorage.setItem("budget_pro:maaser_settings", JSON.stringify(SNAPSHOT.maaserSettings));',
+      '      }',
+      '      localStorage.setItem("budget_pro:goals", JSON.stringify(SNAPSHOT.goals || {}));',
+      '      localStorage.setItem("budget_pro:custom_categories", JSON.stringify(SNAPSHOT.customCategories || []));',
+      '      localStorage.setItem("budget_pro:savings_funds", JSON.stringify(SNAPSHOT.savingsFunds || []));',
+      '      localStorage.setItem("budget_pro:recurring_templates", JSON.stringify(SNAPSHOT.recurringTemplates || []));',
+      '    }',
+      '  } catch (e) {}',
+      '})();',
+      closeScriptTag,
+    ].join('\n');
 
-    const htmlDocument = `<!doctype html>
-<html lang="he" dir="rtl">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>כלכלת הבית ומעשרות Pro</title>
-    <style>
-${cssChunks.join('\n\n')}
-    </style>
-  </head>
-  <body class="bg-slate-50 text-slate-900 antialiased selection:bg-blue-600 selection:text-white">
-    <div id="root"></div>
-    ${bootstrapStorageScript}
-    ${jsChunks.map((code) => `<script type="module">\n${code}\n</script>`).join('\n')}
-  </body>
-</html>`;
+    const htmlDocument = [
+      '<!doctype html>',
+      '<html lang="he" dir="rtl">',
+      '  <head>',
+      '    <meta charset="UTF-8" />',
+      '    <meta name="viewport" content="width=device-width, initial-scale=1.0" />',
+      '    <title>כלכלת הבית ומעשרות Pro</title>',
+      '    <style>',
+      cssChunks.join('\n\n'),
+      '    ' + closeStyleTag,
+      '  </head>',
+      '  <body class="bg-slate-50 text-slate-900 antialiased selection:bg-blue-600 selection:text-white">',
+      '    <div id="root"></div>',
+      '    ' + bootstrapStorageScript,
+      '    ' + jsChunks.map((code) => openScriptModuleTag + '\n' + code + '\n' + closeScriptTag).join('\n'),
+      '  ' + closeBodyTag,
+      closeHtmlTag,
+    ].join('\n');
 
     const blob = new Blob(['\ufeff' + htmlDocument], { type: 'text/html;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
