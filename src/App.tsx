@@ -3,9 +3,7 @@ import {
   Accessibility,
   Activity,
   Award,
-  BarChart3,
   BellRing,
-  Calendar as CalendarIcon,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -16,16 +14,12 @@ import {
   HeartHandshake,
   LayoutDashboard,
   Monitor,
-  PieChart,
-  PiggyBank,
   Plus,
-  Repeat,
   Search,
-  Sparkles,
   Target,
   Trash2,
-  Volume2,
   X,
+  Zap,
 } from 'lucide-react';
 import {
   ActiveTab,
@@ -102,12 +96,19 @@ function getWeekStart(d: Date): Date {
 
 export default function App() {
   const today = useMemo(() => new Date(), []);
+  // 4 Primary Screens: 'overview' | 'maaserot' | 'goals' | 'forecast'
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
+  // Sub-views inside the 4 primary screens for a calm, consolidated hierarchy
+  const [overviewSubMode, setOverviewSubMode] = useState<'ledger' | 'recurring' | 'calendar'>('ledger');
+  const [goalsSubMode, setGoalsSubMode] = useState<'goals' | 'categories' | 'savings'>('goals');
+  const [forecastSubMode, setForecastSubMode] = useState<'forecast' | 'compare'>('forecast');
+
   const [viewYear, setViewYear] = useState<number>(today.getFullYear());
   const [viewMonth, setViewMonth] = useState<number>(today.getMonth());
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isAddTxModalOpen, setIsAddTxModalOpen] = useState(false);
   const [isA11yModalOpen, setIsA11yModalOpen] = useState(false);
+  const [isQuickBarOpen, setIsQuickBarOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   // Accessibility & Display Preferences
@@ -155,7 +156,7 @@ export default function App() {
   // Overview Filtering & Inline Edit State
   const [filterText, setFilterText] = useState<string>('');
   const [filterCategory, setFilterCategory] = useState<string>('all');
-  const [filterType, setFilterType] = useState<'all' | 'income' | 'expense' | 'recurring'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editAmount, setEditAmount] = useState<string>('');
   const [editNote, setEditNote] = useState<string>('');
@@ -269,7 +270,6 @@ export default function App() {
     } catch {}
   }, [recurringTemplates]);
 
-  // Sync Accessibility Preferences to DOM & localStorage
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEYS.A11Y_PREFS, JSON.stringify(a11yPrefs));
@@ -281,7 +281,7 @@ export default function App() {
     } catch {}
   }, [a11yPrefs]);
 
-  // Global Keyboard Shortcuts for Effortless Navigation
+  // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -309,6 +309,7 @@ export default function App() {
       } else if (e.key === '/') {
         e.preventDefault();
         setActiveTab('overview');
+        setOverviewSubMode('ledger');
         setTimeout(() => searchInputRef.current?.focus(), 40);
       } else if (e.key === '?') {
         e.preventDefault();
@@ -316,9 +317,9 @@ export default function App() {
       } else if (e.key === '1') {
         setActiveTab('overview');
       } else if (e.key === '2') {
-        setActiveTab('recurring');
-      } else if (e.key === '3') {
         setActiveTab('maaserot');
+      } else if (e.key === '3') {
+        setActiveTab('goals');
       } else if (e.key === '4') {
         setActiveTab('forecast');
       }
@@ -379,6 +380,9 @@ export default function App() {
     setViewMonth(now.getMonth());
     setSelectedDay(dateKey(now));
   };
+
+  const isViewingCurrentMonth =
+    viewYear === today.getFullYear() && viewMonth === today.getMonth();
 
   const currentMonthKey = monthKey(viewYear, viewMonth);
   const monthTransactions = useMemo(
@@ -580,10 +584,6 @@ export default function App() {
         item.id === tpl.id ? { ...item, lastGeneratedMonth: currentMonthKey } : item
       )
     );
-    triggerSavingsPopup(
-      `תנועה קבועה נרשמה: ${tpl.title}`,
-      `התנועה בסך ${formatILS(finalAmt)} נוספה ליומן ${HE_MONTHS[viewMonth]}.`
-    );
   };
 
   const handleGenerateAllPendingForMonth = (list: RecurringTemplate[]) => {
@@ -611,10 +611,6 @@ export default function App() {
           ? { ...item, lastGeneratedMonth: currentMonthKey }
           : item
       )
-    );
-    triggerSavingsPopup(
-      `${list.length} תנועות קבועות הופקו לחודש ${HE_MONTHS[viewMonth]}`,
-      'כל ההוצאות וההכנסות הקבועות שוקללו בתזרים החודשי.'
     );
   };
 
@@ -691,17 +687,6 @@ export default function App() {
         ];
       });
     }
-
-    setTimeout(() => {
-      if (newTx.type === 'income') {
-        triggerSavingsPopup(
-          `הכנסה חדשה נוספה (+${formatILS(newTx.amount)})!`,
-          `יתרת החיסכון בחודש ${HE_MONTHS[viewMonth]} עלתה ל-${formatILS(summaryMetrics.balance + newTx.amount)}.`
-        );
-      } else {
-        triggerSavingsPopup();
-      }
-    }, 60);
   };
 
   const handleDuplicateTx = (t: Transaction) => {
@@ -711,10 +696,6 @@ export default function App() {
       date: dateKey(new Date()),
     };
     setTransactions((prev) => [cloned, ...prev]);
-    triggerSavingsPopup(
-      `תנועה שוכפלה: ${t.categoryLabel}`,
-      `התנועה בסך ${formatILS(t.amount)} שוכפלה לתאריך היום.`
-    );
   };
 
   const handleSaveEditTx = (id: string) => {
@@ -739,7 +720,6 @@ export default function App() {
       .filter((t) => {
         if (filterType === 'income' && t.type !== 'income') return false;
         if (filterType === 'expense' && t.type !== 'expense') return false;
-        if (filterType === 'recurring' && !t.isRecurring) return false;
         if (filterCategory !== 'all' && t.category !== filterCategory) return false;
         if (filterText.trim()) {
           const q = filterText.toLowerCase();
@@ -849,7 +829,6 @@ export default function App() {
     setQuickInlineNote('');
   };
 
-  // Built-in Offline Voice Readout (Web Speech API)
   const handleSpeakMonthlySummary = () => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
     try {
@@ -868,27 +847,48 @@ export default function App() {
     } catch {}
   };
 
-  const primaryNav: { id: ActiveTab; label: string; icon: React.ComponentType<{ className?: string }>; count?: number }[] = [
-    { id: 'overview', label: 'סקירה ותנועות', icon: LayoutDashboard },
-    { id: 'recurring', label: 'הוראות קבע וקבועות', icon: Repeat, count: pendingMonthlyRecurring.length },
-    { id: 'maaserot', label: 'מערכת מעשרות', icon: HeartHandshake },
+  // 4 Calm, Clear Primary Screens
+  const navItems: {
+    id: ActiveTab;
+    label: string;
+    subtitle: string;
+    icon: React.ComponentType<{ className?: string }>;
+  }[] = [
+    {
+      id: 'overview',
+      label: 'תנועות ושוטף',
+      subtitle: 'יומן חודשי, קבועות ולוח שנה',
+      icon: LayoutDashboard,
+    },
+    {
+      id: 'maaserot',
+      label: 'מעשרות וצדקה',
+      subtitle: 'חישוב מעשר/חומש ופנקס תרומות',
+      icon: HeartHandshake,
+    },
+    ...(a11yPrefs.simplifiedMode
+      ? []
+      : ([
+          {
+            id: 'goals',
+            label: 'תקציב וחיסכון',
+            subtitle: 'יעדים, קטגוריות וקרנות חיסכון',
+            icon: Target,
+          },
+          {
+            id: 'forecast',
+            label: 'תחזית ומגמות',
+            subtitle: 'צפי סוף חודש והשוואת תקופות',
+            icon: Activity,
+          },
+        ] as const)),
   ];
 
-  const analyticsNav: { id: ActiveTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-    { id: 'forecast', label: 'תחזית סוף חודש', icon: Activity },
-    { id: 'goals', label: 'יעדי תקציב', icon: Target },
-    { id: 'categories', label: 'פילוח קטגוריות', icon: PieChart },
-    { id: 'calendar', label: 'לוח שנה תזרימי', icon: CalendarIcon },
-    { id: 'compare', label: 'השוואת תקופות', icon: BarChart3 },
-    { id: 'rewards', label: 'קרנות חיסכון', icon: PiggyBank },
-  ];
-
-  const allNavItems = [...primaryNav, ...analyticsNav];
-  const currentTabInfo = allNavItems.find((n) => n.id === activeTab) || primaryNav[0];
+  const currentTabInfo = navItems.find((n) => n.id === activeTab) || navItems[0];
 
   return (
-    <div className="min-h-screen bg-slate-50/70 text-slate-900 flex flex-col lg:flex-row" dir="rtl">
-      {/* Skip to Main Content Link for Keyboard & Screen Reader Users */}
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col lg:flex-row" dir="rtl">
+      {/* Skip to Main Content Link */}
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:right-3 focus:z-50 focus:px-4 focus:py-2 focus:bg-blue-600 focus:text-white focus:rounded-xl focus:font-bold focus:shadow-lg"
@@ -896,9 +896,9 @@ export default function App() {
         דלג לתוכן הראשי
       </a>
 
-      {/* Clean Modern Right Sidebar (Desktop) */}
-      <aside className="w-full lg:w-64 bg-white border-b lg:border-b-0 lg:border-l border-slate-200/80 shrink-0 flex flex-col justify-between lg:sticky lg:top-0 lg:h-screen z-20">
-        <div className="p-5 space-y-6">
+      {/* Soft, Airy Right Sidebar */}
+      <aside className="w-full lg:w-64 bg-white border-b lg:border-b-0 lg:border-l border-slate-100 shrink-0 flex flex-col justify-between lg:sticky lg:top-0 lg:h-screen z-20">
+        <div className="p-6 space-y-7">
           {/* Brand Header */}
           <div className="flex items-center justify-between">
             <a
@@ -906,17 +906,18 @@ export default function App() {
               onClick={(e) => {
                 e.preventDefault();
                 setActiveTab('overview');
+                setOverviewSubMode('ledger');
               }}
-              className="flex items-center gap-2.5"
+              className="flex items-center gap-3"
             >
-              <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm">
+              <div className="w-9 h-9 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-xs">
                 כ
               </div>
               <div>
                 <div className="text-base font-bold tracking-tight text-slate-900 font-display leading-none">
-                  כלכלת הבית Pro
+                  כלכלת הבית
                 </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
+                <div className="text-xs text-slate-400 mt-1">
                   ניהול תקציב ומעשרות
                 </div>
               </div>
@@ -926,15 +927,15 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setIsA11yModalOpen(true)}
-                aria-label="הגדרות נגישות ותצוגה"
-                className="p-2 text-slate-600 bg-slate-100 rounded-xl"
+                aria-label="נגישות"
+                className="p-2 text-slate-500 hover:bg-slate-100 rounded-xl"
               >
                 <Accessibility className="w-4 h-4" />
               </button>
               <button
                 type="button"
                 onClick={() => setIsAddTxModalOpen(true)}
-                className="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-xl flex items-center gap-1"
+                className="px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 rounded-xl flex items-center gap-1"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>תנועה חדשה</span>
@@ -946,100 +947,65 @@ export default function App() {
           <button
             type="button"
             onClick={() => setIsAddTxModalOpen(true)}
-            title="קיצור מקלדת: N או +"
-            className="hidden lg:flex w-full py-2.5 px-4 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors items-center justify-between shadow-2xs"
+            title="קיצור מקלדת: N"
+            className="hidden lg:flex w-full py-3 px-4 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-2xl transition-all items-center justify-center gap-2 shadow-xs"
           >
-            <span className="flex items-center gap-2">
-              <Plus className="w-4 h-4" />
-              <span>תנועה חדשה</span>
-            </span>
-            <kbd className="px-1.5 py-0.5 text-[10px] bg-blue-700/80 text-blue-100 rounded font-mono-num">
-              N
-            </kbd>
+            <Plus className="w-4 h-4" />
+            <span>הוספת תנועה חדשה</span>
           </button>
 
-          {/* Navigation Links */}
-          <div className="space-y-5">
-            <div>
-              <div className="px-3 mb-2 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                ניהול שוטף
-              </div>
-              <nav className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0">
-                {primaryNav.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = activeTab === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => {
-                        setActiveTab(item.id);
-                        setEditingId(null);
-                      }}
-                      className={`px-3 py-2 text-xs font-medium rounded-xl transition-all flex items-center justify-between gap-2 whitespace-nowrap shrink-0 ${
-                        isActive
-                          ? 'bg-blue-50/90 text-blue-700 font-semibold'
-                          : 'text-slate-600 hover:bg-slate-100/70 hover:text-slate-900'
+          {/* 4-Screen Clean Navigation */}
+          <nav
+            aria-label="ניווט ראשי"
+            className="flex lg:flex-col gap-1.5 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0"
+          >
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab(item.id);
+                    setEditingId(null);
+                  }}
+                  className={`px-3.5 py-3 text-xs rounded-2xl transition-all flex items-center gap-3 whitespace-nowrap shrink-0 text-right ${
+                    isActive
+                      ? 'bg-slate-900 text-white font-semibold shadow-2xs'
+                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium'
+                  }`}
+                >
+                  <Icon
+                    className={`w-4 h-4 shrink-0 ${
+                      isActive ? 'text-blue-400' : 'text-slate-400'
+                    }`}
+                  />
+                  <div>
+                    <div className="leading-none">{item.label}</div>
+                    <div
+                      className={`hidden lg:block text-[11px] mt-1 font-normal ${
+                        isActive ? 'text-slate-300' : 'text-slate-400'
                       }`}
                     >
-                      <div className="flex items-center gap-2.5">
-                        <Icon className={`w-4 h-4 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} />
-                        <span>{item.label}</span>
-                      </div>
-                      {item.count && item.count > 0 ? (
-                        <span className="text-[11px] font-mono-num font-bold text-amber-600">
-                          {item.count}
-                        </span>
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </nav>
-            </div>
-
-            {!a11yPrefs.simplifiedMode && (
-              <div>
-                <div className="px-3 mb-2 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                  ניתוח ותכנון
-                </div>
-                <nav className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0">
-                  {analyticsNav.map((item) => {
-                    const Icon = item.icon;
-                    const isActive = activeTab === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => {
-                          setActiveTab(item.id);
-                          setEditingId(null);
-                        }}
-                        className={`px-3 py-2 text-xs font-medium rounded-xl transition-all flex items-center gap-2.5 whitespace-nowrap shrink-0 ${
-                          isActive
-                            ? 'bg-blue-50/90 text-blue-700 font-semibold'
-                            : 'text-slate-600 hover:bg-slate-100/70 hover:text-slate-900'
-                        }`}
-                      >
-                        <Icon className={`w-4 h-4 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} />
-                        <span>{item.label}</span>
-                      </button>
-                    );
-                  })}
-                </nav>
-              </div>
-            )}
-          </div>
+                      {item.subtitle}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </nav>
         </div>
 
-        {/* Sidebar Bottom Utilities */}
-        <div className="hidden lg:block p-4 border-t border-slate-100 space-y-1.5">
+        {/* Quiet Bottom Tools & Settings */}
+        <div className="hidden lg:block p-5 border-t border-slate-100 space-y-1">
           <button
             type="button"
             onClick={() => setIsA11yModalOpen(true)}
-            className="w-full px-3 py-2 text-xs font-medium text-blue-700 hover:bg-blue-50/80 rounded-xl transition-colors flex items-center justify-between"
+            className="w-full px-3.5 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-colors flex items-center justify-between"
           >
             <span className="flex items-center gap-2.5">
-              <Accessibility className="w-4 h-4 text-blue-600" />
+              <Accessibility className="w-4 h-4 text-slate-400" />
               <span>נגישות וגודל תצוגה</span>
             </span>
             <span className="text-[10px] font-bold text-slate-400 font-mono-num">A+</span>
@@ -1047,17 +1013,17 @@ export default function App() {
 
           <button
             type="button"
-            onClick={() => triggerSavingsPopup()}
-            className="w-full px-3 py-2 text-xs font-medium text-emerald-700 hover:bg-emerald-50/80 rounded-xl transition-colors flex items-center gap-2.5"
+            onClick={() => exportTransactionsCSV(transactions)}
+            className="w-full px-3.5 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-colors flex items-center gap-2.5"
           >
-            <Award className="w-4 h-4 text-emerald-600" />
-            <span>מדד חיסכון מול צפי</span>
+            <Download className="w-4 h-4 text-slate-400" />
+            <span>ייצוא לאקסל (CSV)</span>
           </button>
 
           <button
             type="button"
             onClick={() => setIsExportModalOpen(true)}
-            className="w-full px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100/80 hover:text-slate-900 rounded-xl transition-colors flex items-center gap-2.5"
+            className="w-full px-3.5 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-colors flex items-center gap-2.5"
           >
             <Monitor className="w-4 h-4 text-slate-400" />
             <span>גיבוי ותוכנה שולחנית</span>
@@ -1067,188 +1033,138 @@ export default function App() {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Clean Single Top Header Bar */}
-        <header className="bg-white/90 backdrop-blur-xs border-b border-slate-200/80 px-6 lg:px-8 py-3.5 sticky top-0 z-10">
-          <div className="max-w-[1240px] mx-auto flex flex-wrap items-center justify-between gap-4">
-            {/* Active View Title */}
+        {/* Minimal, Calm Top Header Bar: Title + Month Selector Only */}
+        <header className="bg-white/80 backdrop-blur-md border-b border-slate-100 px-6 lg:px-10 py-4 sticky top-0 z-10">
+          <div className="max-w-[1180px] mx-auto flex items-center justify-between gap-4">
             <div>
-              <h1 className="text-base font-bold text-slate-900 font-display">
+              <h1 className="text-lg font-bold text-slate-900 font-display">
                 {currentTabInfo.label}
               </h1>
             </div>
 
-            {/* Month Switcher & Quick Utilities */}
-            <div className="flex items-center gap-2.5">
-              <div className="inline-flex items-center bg-slate-100/90 p-1 rounded-xl">
+            {/* Clean Month Switcher */}
+            <div className="flex items-center gap-2">
+              {!isViewingCurrentMonth && (
+                <button
+                  type="button"
+                  onClick={handleJumpToday}
+                  className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors"
+                >
+                  חזרה להיום
+                </button>
+              )}
+
+              <div className="inline-flex items-center bg-slate-100/80 p-1 rounded-2xl">
                 <button
                   type="button"
                   onClick={handlePrevMonth}
                   aria-label="חודש קודם"
-                  className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-white rounded-lg transition-colors"
+                  className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-white rounded-xl transition-all"
                 >
                   <ChevronRight className="w-4 h-4" />
                 </button>
-                <div className="min-w-[115px] text-center text-xs font-bold text-slate-800 px-2">
+                <div className="min-w-[120px] text-center text-xs font-bold text-slate-800 px-3">
                   {HE_MONTHS[viewMonth]} {viewYear}
                 </div>
                 <button
                   type="button"
                   onClick={handleNextMonth}
                   aria-label="חודש הבא"
-                  className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-white rounded-lg transition-colors"
+                  className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-white rounded-xl transition-all"
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
               </div>
-
-              <button
-                type="button"
-                onClick={handleJumpToday}
-                className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200/90 hover:bg-slate-50 rounded-xl transition-colors whitespace-nowrap"
-              >
-                היום
-              </button>
-
-              {/* Quick Toggle for Simplified Mode */}
-              <button
-                type="button"
-                onClick={() =>
-                  setA11yPrefs((prev) => ({
-                    ...prev,
-                    simplifiedMode: !prev.simplifiedMode,
-                  }))
-                }
-                title="החלפה בין מצב תצוגה פשוט למצב מלא"
-                className={`px-3 py-1.5 text-xs font-medium rounded-xl border transition-colors flex items-center gap-1.5 whitespace-nowrap ${
-                  a11yPrefs.simplifiedMode
-                    ? 'bg-blue-50 text-blue-700 border-blue-200 font-semibold'
-                    : 'bg-white text-slate-600 border-slate-200/90 hover:bg-slate-50'
-                }`}
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">
-                  {a11yPrefs.simplifiedMode ? 'מצב פשוט: פעיל' : 'מצב פשוט'}
-                </span>
-              </button>
-
-              {/* Quick Accessibility & Font Size Button */}
-              <button
-                type="button"
-                onClick={() => setIsA11yModalOpen(true)}
-                title="נגישות, גודל טקסט וקיצורי מקלדת (?)"
-                className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200/90 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-1.5 whitespace-nowrap"
-              >
-                <Accessibility className="w-3.5 h-3.5 text-blue-600" />
-                <span className="hidden md:inline">נגישות (A+)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => exportTransactionsCSV(transactions)}
-                title="ייצוא תנועות לקובץ CSV"
-                className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200/90 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-1.5 whitespace-nowrap"
-              >
-                <Download className="w-3.5 h-3.5 text-slate-400" />
-                <span className="hidden sm:inline">ייצוא CSV</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsExportModalOpen(true)}
-                className="lg:hidden px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-xl"
-              >
-                גיבוי
-              </button>
             </div>
           </div>
         </header>
 
         {/* Main Viewport Container */}
-        <main id="main-content" className="flex-1 max-w-[1240px] w-full mx-auto px-6 lg:px-8 py-7">
-          {/* TAB 1: OVERVIEW & TRANSACTIONS */}
+        <main id="main-content" className="flex-1 max-w-[1180px] w-full mx-auto px-6 lg:px-10 py-8">
+          {/* =================================================================
+           * SCREEN 1: TRANSACTIONS & DAILY FLOW (תנועות ושוטף)
+           * ================================================================= */}
           {activeTab === 'overview' && (
-            <div className="space-y-6">
-              {/* Plain-Language Accessible Summary Bar + Voice Readout */}
-              <div className="bg-blue-50/50 border border-blue-200/70 rounded-2xl px-5 py-3.5 flex flex-wrap items-center justify-between gap-3">
-                <div className="text-xs text-slate-700 leading-relaxed">
-                  <strong className="text-slate-900">סיכום מהיר ({HE_MONTHS[viewMonth]}): </strong>
-                  הכנסתם עד כה <strong>{formatILS(summaryMetrics.income)}</strong> והוצאתם{' '}
-                  <strong>{formatILS(summaryMetrics.expense)}</strong> (יתרה:{' '}
-                  <strong
-                    className={
-                      summaryMetrics.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'
-                    }
-                  >
-                    {formatILS(summaryMetrics.balance)}
-                  </strong>
-                  ).{' '}
-                  {summaryMetrics.maaserRemaining > 0
-                    ? `נותרו ${formatILS(summaryMetrics.maaserRemaining)} להפרשת מעשרות.`
-                    : 'קופת המעשרות מאוזנת לחלוטין!'}
-                </div>
+            <div className="space-y-7">
+              {/* LAYER 1: Single Unified, Calm 4-Metric Summary Card */}
+              <div className="bg-white rounded-3xl border border-slate-100 shadow-2xs p-6 lg:p-7">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 lg:divide-x lg:divide-x-reverse lg:divide-slate-100">
+                  {/* Metric 1: Income */}
+                  <div className="lg:pl-4">
+                    <div className="text-xs font-medium text-slate-400">הכנסות החודש</div>
+                    <div className="text-2xl font-bold text-emerald-600 mt-1.5 font-mono-num tabular-nums">
+                      {formatILS(summaryMetrics.income)}
+                    </div>
+                    <div className="text-xs text-slate-400 mt-1.5">
+                      {monthTransactions.filter((t) => t.type === 'income').length} תנועות הכנסה
+                    </div>
+                  </div>
 
-                <button
-                  type="button"
-                  onClick={handleSpeakMonthlySummary}
-                  className="px-3 py-1 text-xs font-semibold text-blue-700 bg-white border border-blue-200 hover:bg-blue-50 rounded-xl transition-colors flex items-center gap-1.5 shrink-0"
-                  title="הקראה קולית של סיכום החודש"
-                >
-                  <Volume2 className="w-3.5 h-3.5" />
-                  <span>הקרא סיכום</span>
-                </button>
-              </div>
-              {/* Clean 4-Card KPI Strip */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-white border border-slate-200/80 rounded-2xl p-5">
-                  <div className="text-xs font-medium text-slate-400">
-                    הכנסות החודש
+                  {/* Metric 2: Expenses + Subtle Progress Bar */}
+                  <div className="lg:px-6">
+                    <div className="text-xs font-medium text-slate-400">הוצאות החודש</div>
+                    <div className="text-2xl font-bold text-rose-600 mt-1.5 font-mono-num tabular-nums">
+                      {formatILS(summaryMetrics.expense)}
+                    </div>
+                    {totalGoalAmount > 0 ? (
+                      <div className="mt-2.5 space-y-1">
+                        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${
+                              summaryMetrics.expense / totalGoalAmount < 0.85
+                                ? 'bg-emerald-500'
+                                : summaryMetrics.expense / totalGoalAmount <= 1
+                                  ? 'bg-amber-500'
+                                  : 'bg-rose-500'
+                            }`}
+                            style={{
+                              width: `${Math.min(100, Math.round((summaryMetrics.expense / totalGoalAmount) * 100))}%`,
+                            }}
+                          />
+                        </div>
+                        <div className="text-[11px] text-slate-400 font-mono-num">
+                          {Math.round((summaryMetrics.expense / totalGoalAmount) * 100)}% מיעד התקציב
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-slate-400 mt-1.5">
+                        {monthTransactions.filter((t) => t.type === 'expense').length} תנועות הוצאה
+                      </div>
+                    )}
                   </div>
-                  <div className="text-2xl font-bold text-emerald-600 mt-1.5 font-mono-num tabular-nums">
-                    {formatILS(summaryMetrics.income)}
-                  </div>
-                  <div className="text-xs text-slate-400 mt-2">
-                    {monthTransactions.filter((t) => t.type === 'income').length} תנועות הכנסה
-                  </div>
-                </div>
 
-                <div className="bg-white border border-slate-200/80 rounded-2xl p-5">
-                  <div className="text-xs font-medium text-slate-400">
-                    הוצאות החודש
+                  {/* Metric 3: Net Balance + Quiet End-of-Month Forecast Subtitle */}
+                  <div className="lg:px-6">
+                    <div className="text-xs font-medium text-slate-400">יתרה נטו</div>
+                    <div
+                      className={`text-2xl font-bold mt-1.5 font-mono-num tabular-nums ${
+                        summaryMetrics.balance >= 0 ? 'text-slate-900' : 'text-rose-600'
+                      }`}
+                    >
+                      {formatILS(summaryMetrics.balance)}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('forecast')}
+                      className="text-xs text-slate-400 hover:text-blue-600 mt-1.5 flex items-center gap-1 transition-colors font-mono-num"
+                    >
+                      <span>צפי סוף חודש: {formatILS(summaryMetrics.projectedEndMonthBalance)}</span>
+                      <span>←</span>
+                    </button>
                   </div>
-                  <div className="text-2xl font-bold text-rose-600 mt-1.5 font-mono-num tabular-nums">
-                    {formatILS(summaryMetrics.expense)}
-                  </div>
-                  <div className="text-xs text-slate-400 mt-2">
-                    {monthTransactions.filter((t) => t.type === 'expense').length} תנועות הוצאה
-                  </div>
-                </div>
 
-                <div className="bg-white border border-slate-200/80 rounded-2xl p-5">
-                  <div className="text-xs font-medium text-slate-400">יתרה נטו</div>
-                  <div
-                    className={`text-2xl font-bold mt-1.5 font-mono-num tabular-nums ${
-                      summaryMetrics.balance >= 0 ? 'text-slate-900' : 'text-rose-600'
-                    }`}
-                  >
-                    {formatILS(summaryMetrics.balance)}
-                  </div>
-                  <div className="text-xs text-slate-400 mt-2">
-                    שיעור חיסכון: <span className="font-mono-num font-semibold text-slate-600">{summaryMetrics.savingsRate}%</span>
-                  </div>
-                </div>
-
-                <div className="bg-white border border-slate-200/80 rounded-2xl p-5 flex flex-col justify-between">
-                  <div>
+                  {/* Metric 4: Maaserot Balance */}
+                  <div className="lg:pr-6">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-medium text-slate-400">
-                        קופת מעשרות ({maaserSettings.ratePercent}%)
+                        מעשרות ({maaserSettings.ratePercent}%)
                       </span>
                       <button
                         type="button"
                         onClick={() => setActiveTab('maaserot')}
                         className="text-xs font-semibold text-blue-600 hover:underline"
                       >
-                        למעשרות ←
+                        פירוט ←
                       </button>
                     </div>
                     <div
@@ -1258,469 +1174,437 @@ export default function App() {
                     >
                       {formatILS(Math.abs(summaryMetrics.maaserRemaining))}
                     </div>
-                  </div>
-                  <div className="text-xs text-slate-400 mt-2 flex items-center gap-1.5">
-                    <span>
-                      {summaryMetrics.maaserRemaining >= 0 ? 'נותר להפרשה' : 'יתרת זכות'}
-                    </span>
-                    <span aria-hidden="true">·</span>
-                    <span>שולם: {formatILS(summaryMetrics.maaserPaid)}</span>
+                    <div className="text-xs text-slate-400 mt-1.5">
+                      {summaryMetrics.maaserRemaining >= 0 ? 'נותר להפרשה' : 'יתרת זכות'} · שולם{' '}
+                      {formatILS(summaryMetrics.maaserPaid)}
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Unified Clean Insights Strip (Budget Utilization + End-of-Month Forecast) */}
-              <div className="bg-white border border-slate-200/80 rounded-2xl p-5 grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-                {totalGoalAmount > 0 && (
-                  <div className="lg:col-span-5 space-y-2 lg:border-l lg:border-slate-100 lg:pl-6">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-slate-700">ניצול תקציב חודשי</span>
-                      <span className="font-mono-num tabular-nums text-slate-500">
-                        {formatILS(summaryMetrics.expense)} מתוך {formatILS(totalGoalAmount)} (
-                        {Math.round((summaryMetrics.expense / totalGoalAmount) * 100)}%)
-                      </span>
-                    </div>
-                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full transition-all rounded-full ${
-                          summaryMetrics.expense / totalGoalAmount < 0.8
-                            ? 'bg-emerald-500'
-                            : summaryMetrics.expense / totalGoalAmount <= 1
-                              ? 'bg-amber-500'
-                              : 'bg-rose-500'
+              {/* LAYER 2: Center-Stage Workspace Card (Ledger / Recurring / Calendar) */}
+              <div className="bg-white rounded-3xl border border-slate-100 shadow-2xs overflow-hidden">
+                {/* Clean Sub-View Header */}
+                <div className="px-6 lg:px-7 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-4">
+                  {/* Segmented Switch: יומן תנועות | הוראות קבע | לוח שנה */}
+                  <div className="inline-flex items-center bg-slate-100/80 p-1 rounded-2xl text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setOverviewSubMode('ledger')}
+                      className={`px-3.5 py-1.5 rounded-xl font-semibold transition-all ${
+                        overviewSubMode === 'ledger'
+                          ? 'bg-white text-slate-900 shadow-2xs'
+                          : 'text-slate-500 hover:text-slate-900'
+                      }`}
+                    >
+                      יומן תנועות ({filteredTransactions.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOverviewSubMode('recurring')}
+                      className={`px-3.5 py-1.5 rounded-xl font-semibold transition-all flex items-center gap-1.5 ${
+                        overviewSubMode === 'recurring'
+                          ? 'bg-white text-slate-900 shadow-2xs'
+                          : 'text-slate-500 hover:text-slate-900'
+                      }`}
+                    >
+                      <span>הוראות קבע</span>
+                      {pendingMonthlyRecurring.length > 0 && (
+                        <span className="w-4 h-4 rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold flex items-center justify-center font-mono-num">
+                          {pendingMonthlyRecurring.length}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOverviewSubMode('calendar')}
+                      className={`px-3.5 py-1.5 rounded-xl font-semibold transition-all ${
+                        overviewSubMode === 'calendar'
+                          ? 'bg-white text-slate-900 shadow-2xs'
+                          : 'text-slate-500 hover:text-slate-900'
+                      }`}
+                    >
+                      לוח שנה
+                    </button>
+                  </div>
+
+                  {/* Toolbar Controls (Only when on Ledger sub-mode) */}
+                  {overviewSubMode === 'ledger' && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      {pendingMonthlyRecurring.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => handleGenerateAllPendingForMonth(pendingMonthlyRecurring)}
+                          className="px-3 py-1.5 text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-xl transition-colors flex items-center gap-1.5"
+                        >
+                          <BellRing className="w-3.5 h-3.5" />
+                          <span>אשר {pendingMonthlyRecurring.length} קבועות</span>
+                        </button>
+                      )}
+
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
+                        <input
+                          ref={searchInputRef}
+                          type="text"
+                          value={filterText}
+                          onChange={(e) => setFilterText(e.target.value)}
+                          placeholder="חיפוש..."
+                          aria-label="חיפוש תנועה"
+                          className="pr-8 pl-3 py-1.5 text-xs bg-slate-50 border border-slate-200/70 rounded-xl focus:outline-none focus:bg-white focus:border-blue-600 w-40"
+                        />
+                      </div>
+
+                      <div className="inline-flex items-center bg-slate-100/80 p-1 rounded-xl text-xs">
+                        {(
+                          [
+                            { id: 'all', label: 'הכל' },
+                            { id: 'income', label: 'הכנסות' },
+                            { id: 'expense', label: 'הוצאות' },
+                          ] as const
+                        ).map((ft) => (
+                          <button
+                            key={ft.id}
+                            type="button"
+                            onClick={() => setFilterType(ft.id)}
+                            className={`px-2.5 py-1 rounded-lg font-medium transition-colors ${
+                              filterType === ft.id
+                                ? 'bg-white text-slate-900 shadow-2xs'
+                                : 'text-slate-500 hover:text-slate-900'
+                            }`}
+                          >
+                            {ft.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setIsQuickBarOpen((v) => !v)}
+                        className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition-colors flex items-center gap-1 ${
+                          isQuickBarOpen
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
                         }`}
-                        style={{
-                          width: `${Math.min(100, Math.round((summaryMetrics.expense / totalGoalAmount) * 100))}%`,
-                        }}
-                      />
+                      >
+                        <Zap className="w-3.5 h-3.5" />
+                        <span>הזנה מהירה</span>
+                      </button>
                     </div>
+                  )}
+                </div>
+
+                {/* Collapsible 1-Line Quick Inline Entry Bar (Only when toggled open) */}
+                {overviewSubMode === 'ledger' && isQuickBarOpen && (
+                  <form
+                    onSubmit={handleQuickInlineSubmit}
+                    className="px-6 lg:px-7 py-3.5 bg-slate-50/70 border-b border-slate-100 flex flex-wrap items-center gap-2.5"
+                  >
+                    <div className="inline-flex bg-white border border-slate-200 p-0.5 rounded-xl text-xs">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQuickInlineType('expense');
+                          setQuickInlineCat(expenseCategories[0]?.id || 'food');
+                        }}
+                        className={`px-2.5 py-1 rounded-lg font-semibold transition-colors ${
+                          quickInlineType === 'expense'
+                            ? 'bg-rose-50 text-rose-700'
+                            : 'text-slate-500 hover:text-slate-900'
+                        }`}
+                      >
+                        הוצאה (−)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQuickInlineType('income');
+                          setQuickInlineCat(incomeCategories[0]?.id || 'salary');
+                        }}
+                        className={`px-2.5 py-1 rounded-lg font-semibold transition-colors ${
+                          quickInlineType === 'income'
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : 'text-slate-500 hover:text-slate-900'
+                        }`}
+                      >
+                        הכנסה (+)
+                      </button>
+                    </div>
+
+                    <input
+                      type="number"
+                      min="1"
+                      step="any"
+                      value={quickInlineAmount}
+                      onChange={(e) => setQuickInlineAmount(e.target.value)}
+                      placeholder="סכום (₪)..."
+                      autoFocus
+                      className="w-28 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl font-mono-num focus:outline-none focus:border-blue-600"
+                    />
+
+                    <select
+                      value={quickInlineCat}
+                      onChange={(e) => setQuickInlineCat(e.target.value)}
+                      className="px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-600"
+                    >
+                      {(quickInlineType === 'expense' ? expenseCategories : incomeCategories).map(
+                        (c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.label}
+                          </option>
+                        )
+                      )}
+                    </select>
+
+                    <input
+                      type="text"
+                      value={quickInlineNote}
+                      onChange={(e) => setQuickInlineNote(e.target.value)}
+                      placeholder="פירוט קצר (אופציונלי)..."
+                      className="flex-1 min-w-[140px] px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-600"
+                    />
+
+                    <button
+                      type="submit"
+                      className="px-4 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors"
+                    >
+                      הוסף
+                    </button>
+                  </form>
+                )}
+
+                {/* SUB-MODE A: TRANSACTIONS LEDGER */}
+                {overviewSubMode === 'ledger' && (
+                  <>
+                    {filteredTransactions.length === 0 ? (
+                      <div className="text-center py-20 text-slate-400 text-sm space-y-2">
+                        <div>אין תנועות בחודש או בסינון הנבחר.</div>
+                        <button
+                          type="button"
+                          onClick={() => setIsAddTxModalOpen(true)}
+                          className="text-xs font-semibold text-blue-600 hover:underline"
+                        >
+                          + הוספת תנועה חדשה
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm border-collapse">
+                          <thead>
+                            <tr className="border-b border-slate-100 text-xs text-slate-400">
+                              <th className="py-3.5 px-7 text-right font-medium">תאריך</th>
+                              <th className="py-3.5 px-4 text-right font-medium">קטגוריה ופירוט</th>
+                              <th className="py-3.5 px-4 text-right font-medium">אמצעי תשלום</th>
+                              <th className="py-3.5 px-4 text-left font-medium">סכום</th>
+                              <th className="py-3.5 px-7 text-left font-medium w-28"></th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100/80">
+                            {filteredTransactions.map((t) => {
+                              const isEditing = editingId === t.id;
+                              return (
+                                <tr
+                                  key={t.id}
+                                  className="group hover:bg-slate-50/70 transition-colors"
+                                >
+                                  <td className="py-4 px-7 text-xs text-slate-400 font-mono-num tabular-nums whitespace-nowrap">
+                                    {isEditing ? (
+                                      <input
+                                        type="date"
+                                        value={editDate}
+                                        onChange={(e) => setEditDate(e.target.value)}
+                                        className="px-2 py-1 text-xs border border-slate-300 rounded-lg font-mono-num"
+                                      />
+                                    ) : (
+                                      t.date
+                                    )}
+                                  </td>
+                                  <td className="py-4 px-4">
+                                    {isEditing ? (
+                                      <input
+                                        type="text"
+                                        value={editNote}
+                                        onChange={(e) => setEditNote(e.target.value)}
+                                        placeholder="הערה..."
+                                        className="px-2.5 py-1 text-xs border border-slate-300 rounded-lg w-full"
+                                      />
+                                    ) : (
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="font-semibold text-slate-800">
+                                          {t.categoryLabel}
+                                        </span>
+                                        {t.note && (
+                                          <span className="text-slate-400 text-xs">
+                                            · {t.note}
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="py-4 px-4 text-xs text-slate-400">
+                                    <span>{getPaymentMethodLabel(t.paymentMethod)}</span>
+                                    {t.isRecurring && (
+                                      <span className="text-blue-600 font-medium mr-1.5">
+                                        · קבוע
+                                      </span>
+                                    )}
+                                    {t.type === 'expense' && t.isMaaserPayment && (
+                                      <span className="text-emerald-600 font-medium mr-1.5">
+                                        · מעשר
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="py-4 px-4 text-left font-bold font-mono-num tabular-nums whitespace-nowrap">
+                                    {isEditing ? (
+                                      <input
+                                        type="number"
+                                        value={editAmount}
+                                        onChange={(e) => setEditAmount(e.target.value)}
+                                        className="px-2 py-1 text-xs border border-slate-300 rounded-lg w-24 text-left font-mono-num"
+                                      />
+                                    ) : (
+                                      <span
+                                        className={
+                                          t.type === 'income'
+                                            ? 'text-emerald-600'
+                                            : 'text-slate-800'
+                                        }
+                                      >
+                                        {t.type === 'income' ? '+' : '−'}
+                                        {formatILS(t.amount)}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="py-4 px-7 text-left whitespace-nowrap">
+                                    <div
+                                      className={`flex items-center justify-end gap-1 ${
+                                        isEditing
+                                          ? 'opacity-100'
+                                          : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity'
+                                      }`}
+                                    >
+                                      {isEditing ? (
+                                        <>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleSaveEditTx(t.id)}
+                                            className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg"
+                                            title="שמור"
+                                          >
+                                            <Check className="w-4 h-4" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setEditingId(null)}
+                                            className="px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 rounded-lg"
+                                          >
+                                            ביטול
+                                          </button>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleDuplicateTx(t)}
+                                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
+                                            title="שכפל להיום"
+                                          >
+                                            <Copy className="w-3.5 h-3.5" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setEditingId(t.id);
+                                              setEditAmount(String(t.amount));
+                                              setEditNote(t.note || '');
+                                              setEditDate(t.date);
+                                            }}
+                                            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg"
+                                            aria-label="ערוך"
+                                          >
+                                            <Edit2 className="w-3.5 h-3.5" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleDeleteTx(t.id)}
+                                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
+                                            aria-label="מחק"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        </>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* SUB-MODE B: RECURRING STANDING ORDERS */}
+                {overviewSubMode === 'recurring' && (
+                  <div className="p-6 lg:p-7">
+                    <RecurringManagerView
+                      viewYear={viewYear}
+                      viewMonth={viewMonth}
+                      templates={recurringTemplates}
+                      monthTransactions={monthTransactions}
+                      allTransactions={transactions}
+                      expenseCategories={expenseCategories}
+                      incomeCategories={incomeCategories}
+                      maaserSettings={maaserSettings}
+                      onAddTemplate={(tpl) =>
+                        setRecurringTemplates((prev) => [
+                          ...prev,
+                          {
+                            ...tpl,
+                            id: `rec-tpl-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+                          },
+                        ])
+                      }
+                      onUpdateTemplate={(id, patch) =>
+                        setRecurringTemplates((prev) =>
+                          prev.map((t) => (t.id === id ? { ...t, ...patch } : t))
+                        )
+                      }
+                      onDeleteTemplate={(id) =>
+                        setRecurringTemplates((prev) => prev.filter((t) => t.id !== id))
+                      }
+                      onGenerateTransactionFromTemplate={handleGenerateFromTemplate}
+                      onGenerateAllPendingForMonth={handleGenerateAllPendingForMonth}
+                      onSkipTemplateForMonth={handleSkipTemplateForMonth}
+                    />
                   </div>
                 )}
 
-                <div
-                  className={`${
-                    totalGoalAmount > 0 ? 'lg:col-span-7' : 'lg:col-span-12'
-                  } flex flex-wrap items-center justify-between gap-4`}
-                >
-                  <div className="space-y-1">
-                    <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                      <Activity className="w-3.5 h-3.5 text-blue-600" />
-                      <span>
-                        תחזית סוף חודש ({summaryMetrics.remainingDays} ימים נותרו)
-                      </span>
-                    </div>
-                    <div className="text-xs text-slate-500 flex flex-wrap items-center gap-2 font-mono-num tabular-nums">
-                      <span>
-                        צפי הוצאות: <strong className="text-slate-800">{formatILS(summaryMetrics.projectedEndMonthExpense)}</strong>
-                      </span>
-                      <span aria-hidden="true">·</span>
-                      <span>
-                        צפי יתרה:{' '}
-                        <strong
-                          className={
-                            summaryMetrics.projectedEndMonthBalance >= 0
-                              ? 'text-emerald-600'
-                              : 'text-rose-600'
-                          }
-                        >
-                          {formatILS(summaryMetrics.projectedEndMonthBalance)}
-                        </strong>
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {pendingMonthlyRecurring.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => handleGenerateAllPendingForMonth(pendingMonthlyRecurring)}
-                        className="px-3 py-1.5 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 rounded-xl transition-colors flex items-center gap-1.5"
-                      >
-                        <BellRing className="w-3.5 h-3.5 text-amber-600" />
-                        <span>אשר {pendingMonthlyRecurring.length} קבועות ממתינות</span>
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('forecast')}
-                      className="px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50/80 hover:bg-blue-100/80 rounded-xl transition-colors whitespace-nowrap"
-                    >
-                      ניתוח מלא ←
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Full-Width Clean Transactions Table */}
-              <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden">
-                {/* 1-Line Quick Inline Entry Bar (Accessible Fast Entry) */}
-                <form
-                  onSubmit={handleQuickInlineSubmit}
-                  aria-label="הזנה מהירה של תנועה חדשה"
-                  className="px-6 py-3.5 bg-slate-50/70 border-b border-slate-100 flex flex-wrap items-center gap-2.5"
-                >
-                  <span className="text-xs font-bold text-slate-700 ml-1">הזנה מהירה:</span>
-
-                  <div className="inline-flex bg-white border border-slate-200 p-0.5 rounded-xl text-xs">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setQuickInlineType('expense');
-                        setQuickInlineCat(expenseCategories[0]?.id || 'food');
-                      }}
-                      className={`px-2.5 py-1 rounded-lg font-semibold transition-colors ${
-                        quickInlineType === 'expense'
-                          ? 'bg-rose-50 text-rose-700'
-                          : 'text-slate-500 hover:text-slate-900'
-                      }`}
-                    >
-                      הוצאה (−)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setQuickInlineType('income');
-                        setQuickInlineCat(incomeCategories[0]?.id || 'salary');
-                      }}
-                      className={`px-2.5 py-1 rounded-lg font-semibold transition-colors ${
-                        quickInlineType === 'income'
-                          ? 'bg-emerald-50 text-emerald-700'
-                          : 'text-slate-500 hover:text-slate-900'
-                      }`}
-                    >
-                      הכנסה (+)
-                    </button>
-                  </div>
-
-                  <input
-                    type="number"
-                    min="1"
-                    step="any"
-                    value={quickInlineAmount}
-                    onChange={(e) => setQuickInlineAmount(e.target.value)}
-                    placeholder="סכום (₪)..."
-                    aria-label="סכום בשקלים להזנה מהירה"
-                    className="w-28 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl font-mono-num focus:outline-none focus:border-blue-600"
-                  />
-
-                  <select
-                    value={quickInlineCat}
-                    onChange={(e) => setQuickInlineCat(e.target.value)}
-                    aria-label="קטגוריה להזנה מהירה"
-                    className="px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-600"
-                  >
-                    {(quickInlineType === 'expense' ? expenseCategories : incomeCategories).map(
-                      (c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.label}
-                        </option>
-                      )
-                    )}
-                  </select>
-
-                  <input
-                    type="text"
-                    value={quickInlineNote}
-                    onChange={(e) => setQuickInlineNote(e.target.value)}
-                    placeholder="פירוט קצר (אופציונלי)..."
-                    aria-label="הערה לתנועה"
-                    className="flex-1 min-w-[140px] px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-600"
-                  />
-
-                  <button
-                    type="submit"
-                    className="px-4 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors flex items-center gap-1 shrink-0"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>הוסף מיד</span>
-                  </button>
-                </form>
-
-                {/* Table Toolbar */}
-                <div className="px-6 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <h2 className="text-sm font-bold text-slate-900">
-                      יומן תנועות ({filteredTransactions.length})
-                    </h2>
-                    <button
-                      type="button"
-                      onClick={() => setIsAddTxModalOpen(true)}
-                      className="px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors flex items-center gap-1"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>טופס מלא ומעשרות</span>
-                    </button>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="relative">
-                      <Search className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
-                      <input
-                        ref={searchInputRef}
-                        type="text"
-                        value={filterText}
-                        onChange={(e) => setFilterText(e.target.value)}
-                        placeholder="חיפוש תנועה (/ במקלדת)..."
-                        aria-label="חיפוש תנועה ביומן"
-                        className="pr-8 pl-3 py-1.5 text-xs bg-slate-50 border border-slate-200/80 rounded-xl focus:outline-none focus:bg-white focus:border-blue-600 w-48"
-                      />
-                    </div>
-
-                    <select
-                      value={filterCategory}
-                      onChange={(e) => setFilterCategory(e.target.value)}
-                      className="px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200/80 rounded-xl focus:outline-none text-slate-700"
-                    >
-                      <option value="all">כל הקטגוריות</option>
-                      {expenseCategories.concat(incomeCategories).map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.label}
-                        </option>
-                      ))}
-                    </select>
-
-                    <div className="inline-flex items-center bg-slate-100 p-1 rounded-xl text-xs">
-                      {(
-                        [
-                          { id: 'all', label: 'הכל' },
-                          { id: 'income', label: 'הכנסות' },
-                          { id: 'expense', label: 'הוצאות' },
-                          { id: 'recurring', label: 'קבועות' },
-                        ] as const
-                      ).map((ft) => (
-                        <button
-                          key={ft.id}
-                          type="button"
-                          onClick={() => setFilterType(ft.id)}
-                          className={`px-2.5 py-1 rounded-lg font-medium transition-colors whitespace-nowrap ${
-                            filterType === ft.id
-                              ? 'bg-white text-slate-900 shadow-2xs'
-                              : 'text-slate-500 hover:text-slate-900'
-                          }`}
-                        >
-                          {ft.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {filteredTransactions.length === 0 ? (
-                  <div className="text-center py-16 text-slate-400 text-sm space-y-2">
-                    <div>אין תנועות תואמות לחודש או לסינון הנבחר.</div>
-                    <button
-                      type="button"
-                      onClick={() => setIsAddTxModalOpen(true)}
-                      className="text-xs font-semibold text-blue-600 hover:underline"
-                    >
-                      + הוספת תנועה ראשונה לחודש זה
-                    </button>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm border-collapse">
-                      <thead>
-                        <tr className="border-b border-slate-100 text-xs text-slate-400 bg-slate-50/40">
-                          <th className="py-3 px-6 text-right font-medium">תאריך</th>
-                          <th className="py-3 px-4 text-right font-medium">קטגוריה ופירוט</th>
-                          <th className="py-3 px-4 text-right font-medium">אמצעי תשלום</th>
-                          <th className="py-3 px-4 text-left font-medium">סכום</th>
-                          <th className="py-3 px-6 text-left font-medium">פעולות</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {filteredTransactions.map((t) => {
-                          const isEditing = editingId === t.id;
-                          return (
-                            <tr key={t.id} className="hover:bg-slate-50/70 transition-colors">
-                              <td className="py-3.5 px-6 text-xs text-slate-500 font-mono-num tabular-nums whitespace-nowrap">
-                                {isEditing ? (
-                                  <input
-                                    type="date"
-                                    value={editDate}
-                                    onChange={(e) => setEditDate(e.target.value)}
-                                    className="px-2 py-1 text-xs border border-slate-300 rounded-lg font-mono-num"
-                                  />
-                                ) : (
-                                  t.date
-                                )}
-                              </td>
-                              <td className="py-3.5 px-4">
-                                {isEditing ? (
-                                  <input
-                                    type="text"
-                                    value={editNote}
-                                    onChange={(e) => setEditNote(e.target.value)}
-                                    placeholder="הערה..."
-                                    className="px-2.5 py-1 text-xs border border-slate-300 rounded-lg w-full"
-                                  />
-                                ) : (
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="font-semibold text-slate-900">
-                                      {t.categoryLabel}
-                                    </span>
-                                    {t.note && (
-                                      <span className="text-slate-500 text-xs">
-                                        — {t.note}
-                                      </span>
-                                    )}
-                                  </div>
-                                )}
-                              </td>
-                              <td className="py-3.5 px-4 text-xs text-slate-400">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span>{getPaymentMethodLabel(t.paymentMethod)}</span>
-                                  {t.isRecurring && (
-                                    <>
-                                      <span aria-hidden="true">·</span>
-                                      <span className="text-blue-600 font-medium">קבוע</span>
-                                    </>
-                                  )}
-                                  {t.type === 'expense' && t.isMaaserPayment && (
-                                    <>
-                                      <span aria-hidden="true">·</span>
-                                      <span className="text-emerald-600 font-medium">מעשר</span>
-                                    </>
-                                  )}
-                                </div>
-                              </td>
-                              <td className="py-3.5 px-4 text-left font-bold font-mono-num tabular-nums whitespace-nowrap">
-                                {isEditing ? (
-                                  <input
-                                    type="number"
-                                    value={editAmount}
-                                    onChange={(e) => setEditAmount(e.target.value)}
-                                    className="px-2 py-1 text-xs border border-slate-300 rounded-lg w-24 text-left font-mono-num"
-                                  />
-                                ) : (
-                                  <span
-                                    className={
-                                      t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'
-                                    }
-                                  >
-                                    {t.type === 'income' ? '+' : '−'}
-                                    {formatILS(t.amount)}
-                                  </span>
-                                )}
-                              </td>
-                              <td className="py-3.5 px-6 text-left whitespace-nowrap">
-                                <div className="flex items-center justify-end gap-1">
-                                  {isEditing ? (
-                                    <>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleSaveEditTx(t.id)}
-                                        className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg"
-                                        title="שמור"
-                                      >
-                                        <Check className="w-4 h-4" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => setEditingId(null)}
-                                        className="px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 rounded-lg"
-                                      >
-                                        ביטול
-                                      </button>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDuplicateTx(t)}
-                                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
-                                        title="שכפל להיום"
-                                      >
-                                        <Copy className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setEditingId(t.id);
-                                          setEditAmount(String(t.amount));
-                                          setEditNote(t.note || '');
-                                          setEditDate(t.date);
-                                        }}
-                                        className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg"
-                                        aria-label="ערוך"
-                                      >
-                                        <Edit2 className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDeleteTx(t.id)}
-                                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
-                                        aria-label="מחק"
-                                      >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
-                                    </>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                {/* SUB-MODE C: CALENDAR */}
+                {overviewSubMode === 'calendar' && (
+                  <div className="p-6 lg:p-7">
+                    <CalendarSection
+                      viewYear={viewYear}
+                      viewMonth={viewMonth}
+                      transactions={monthTransactions}
+                      maaserDonations={maaserDonations.filter(
+                        (d) => d.date.slice(0, 7) === currentMonthKey
+                      )}
+                      selectedDay={selectedDay}
+                      onSelectDay={setSelectedDay}
+                      onDeleteTx={handleDeleteTx}
+                    />
                   </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* TAB 2: RECURRING TRANSACTIONS */}
-          {activeTab === 'recurring' && (
-            <RecurringManagerView
-              viewYear={viewYear}
-              viewMonth={viewMonth}
-              templates={recurringTemplates}
-              monthTransactions={monthTransactions}
-              allTransactions={transactions}
-              expenseCategories={expenseCategories}
-              incomeCategories={incomeCategories}
-              maaserSettings={maaserSettings}
-              onAddTemplate={(tpl) =>
-                setRecurringTemplates((prev) => [
-                  ...prev,
-                  { ...tpl, id: `rec-tpl-${Date.now()}-${Math.random().toString(36).slice(2, 5)}` },
-                ])
-              }
-              onUpdateTemplate={(id, patch) =>
-                setRecurringTemplates((prev) =>
-                  prev.map((t) => (t.id === id ? { ...t, ...patch } : t))
-                )
-              }
-              onDeleteTemplate={(id) =>
-                setRecurringTemplates((prev) => prev.filter((t) => t.id !== id))
-              }
-              onGenerateTransactionFromTemplate={handleGenerateFromTemplate}
-              onGenerateAllPendingForMonth={handleGenerateAllPendingForMonth}
-              onSkipTemplateForMonth={handleSkipTemplateForMonth}
-            />
-          )}
-
-          {/* TAB 3: FORECAST & ANALYTICS */}
-          {activeTab === 'forecast' && (
-            <ForecastAndAnalyticsView
-              viewYear={viewYear}
-              viewMonth={viewMonth}
-              transactions={transactions}
-              expenseCategories={expenseCategories}
-              goals={goals}
-              maaserSettings={maaserSettings}
-              savingsFunds={savingsFunds}
-              onQuickAddTransaction={(tx) =>
-                setTransactions((prev) => [
-                  { ...tx, id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` },
-                  ...prev,
-                ])
-              }
-            />
-          )}
-
-          {/* TAB 4: MAASEROT & CHUMASH */}
+          {/* =================================================================
+           * SCREEN 2: MAASEROT & TZEDAKAH (מעשרות וצדקה)
+           * ================================================================= */}
           {activeTab === 'maaserot' && (
             <MaaserotView
               viewYear={viewYear}
@@ -1746,97 +1630,190 @@ export default function App() {
             />
           )}
 
-          {/* TAB 5: CALENDAR */}
-          {activeTab === 'calendar' && (
-            <CalendarSection
-              viewYear={viewYear}
-              viewMonth={viewMonth}
-              transactions={monthTransactions}
-              maaserDonations={maaserDonations.filter(
-                (d) => d.date.slice(0, 7) === currentMonthKey
-              )}
-              selectedDay={selectedDay}
-              onSelectDay={setSelectedDay}
-              onDeleteTx={handleDeleteTx}
-            />
-          )}
-
-          {/* TAB 6: CATEGORIES */}
-          {activeTab === 'categories' && (
-            <CategoriesSection
-              viewYear={viewYear}
-              viewMonth={viewMonth}
-              monthTransactions={monthTransactions}
-              expenseCategories={expenseCategories}
-              incomeCategories={incomeCategories}
-              newCatLabel={newCatLabel}
-              setNewCatLabel={setNewCatLabel}
-              newCatType={newCatType}
-              setNewCatType={setNewCatType}
-              newCatColor={newCatColor}
-              setNewCatColor={setNewCatColor}
-              onAddCustomCategory={(cat) => setCustomCategories((prev) => [...prev, cat])}
-            />
-          )}
-
-          {/* TAB 7: GOALS */}
+          {/* =================================================================
+           * SCREEN 3: BUDGET & SAVINGS (תקציב וחיסכון — יעדים, קטגוריות וקרנות)
+           * ================================================================= */}
           {activeTab === 'goals' && (
-            <GoalsSection
-              viewYear={viewYear}
-              viewMonth={viewMonth}
-              monthTransactions={monthTransactions}
-              expenseCategories={expenseCategories}
-              goals={goals}
-              onUpdateGoal={(catId, val) => setGoals((prev) => ({ ...prev, [catId]: val }))}
-            />
+            <div className="space-y-6">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="inline-flex items-center bg-slate-200/70 p-1 rounded-2xl text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setGoalsSubMode('goals')}
+                    className={`px-4 py-1.5 rounded-xl font-semibold transition-all ${
+                      goalsSubMode === 'goals'
+                        ? 'bg-white text-slate-900 shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    יעדי תקציב לפי קטגוריה
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGoalsSubMode('categories')}
+                    className={`px-4 py-1.5 rounded-xl font-semibold transition-all ${
+                      goalsSubMode === 'categories'
+                        ? 'bg-white text-slate-900 shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    פילוח קטגוריות
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGoalsSubMode('savings')}
+                    className={`px-4 py-1.5 rounded-xl font-semibold transition-all ${
+                      goalsSubMode === 'savings'
+                        ? 'bg-white text-slate-900 shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    קרנות חיסכון ({savingsFunds.length})
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => triggerSavingsPopup()}
+                  className="px-3.5 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors flex items-center gap-1.5"
+                >
+                  <Award className="w-3.5 h-3.5" />
+                  <span>מדד חיסכון מול צפי</span>
+                </button>
+              </div>
+
+              {goalsSubMode === 'goals' && (
+                <GoalsSection
+                  viewYear={viewYear}
+                  viewMonth={viewMonth}
+                  monthTransactions={monthTransactions}
+                  expenseCategories={expenseCategories}
+                  goals={goals}
+                  onUpdateGoal={(catId, val) =>
+                    setGoals((prev) => ({ ...prev, [catId]: val }))
+                  }
+                />
+              )}
+
+              {goalsSubMode === 'categories' && (
+                <CategoriesSection
+                  viewYear={viewYear}
+                  viewMonth={viewMonth}
+                  monthTransactions={monthTransactions}
+                  expenseCategories={expenseCategories}
+                  incomeCategories={incomeCategories}
+                  newCatLabel={newCatLabel}
+                  setNewCatLabel={setNewCatLabel}
+                  newCatType={newCatType}
+                  setNewCatType={setNewCatType}
+                  newCatColor={newCatColor}
+                  setNewCatColor={setNewCatColor}
+                  onAddCustomCategory={(cat) =>
+                    setCustomCategories((prev) => [...prev, cat])
+                  }
+                />
+              )}
+
+              {goalsSubMode === 'savings' && (
+                <RewardsAndSavingsSection
+                  savingsStats={savingsStats}
+                  savingsFunds={savingsFunds}
+                  newFundName={newFundName}
+                  setNewFundName={setNewFundName}
+                  newFundTarget={newFundTarget}
+                  setNewFundTarget={setNewFundTarget}
+                  newFundCurrent={newFundCurrent}
+                  setNewFundCurrent={setNewFundCurrent}
+                  onAddFund={(fund) => setSavingsFunds((prev) => [...prev, fund])}
+                  onUpdateFundAmount={(id, delta) =>
+                    setSavingsFunds((prev) =>
+                      prev.map((f) =>
+                        f.id === id
+                          ? { ...f, currentAmount: Math.max(0, f.currentAmount + delta) }
+                          : f
+                      )
+                    )
+                  }
+                  onDeleteFund={(id) =>
+                    setSavingsFunds((prev) => prev.filter((f) => f.id !== id))
+                  }
+                />
+              )}
+            </div>
           )}
 
-          {/* TAB 8: COMPARE */}
-          {activeTab === 'compare' && (
-            <CompareSection
-              today={today}
-              transactions={transactions}
-              maaserDonations={maaserDonations}
-            />
-          )}
+          {/* =================================================================
+           * SCREEN 4: FORECAST & TRENDS (תחזית ומגמות)
+           * ================================================================= */}
+          {activeTab === 'forecast' && (
+            <div className="space-y-6">
+              <div className="inline-flex items-center bg-slate-200/70 p-1 rounded-2xl text-xs">
+                <button
+                  type="button"
+                  onClick={() => setForecastSubMode('forecast')}
+                  className={`px-4 py-1.5 rounded-xl font-semibold transition-all ${
+                    forecastSubMode === 'forecast'
+                      ? 'bg-white text-slate-900 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  תחזית סוף חודש וסימולטור
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setForecastSubMode('compare')}
+                  className={`px-4 py-1.5 rounded-xl font-semibold transition-all ${
+                    forecastSubMode === 'compare'
+                      ? 'bg-white text-slate-900 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  השוואת 6 חודשים אחרונים
+                </button>
+              </div>
 
-          {/* TAB 9: SAVINGS FUNDS & REWARDS */}
-          {activeTab === 'rewards' && (
-            <RewardsAndSavingsSection
-              savingsStats={savingsStats}
-              savingsFunds={savingsFunds}
-              newFundName={newFundName}
-              setNewFundName={setNewFundName}
-              newFundTarget={newFundTarget}
-              setNewFundTarget={setNewFundTarget}
-              newFundCurrent={newFundCurrent}
-              setNewFundCurrent={setNewFundCurrent}
-              onAddFund={(fund) => setSavingsFunds((prev) => [...prev, fund])}
-              onUpdateFundAmount={(id, delta) =>
-                setSavingsFunds((prev) =>
-                  prev.map((f) =>
-                    f.id === id
-                      ? { ...f, currentAmount: Math.max(0, f.currentAmount + delta) }
-                      : f
-                  )
-                )
-              }
-              onDeleteFund={(id) => setSavingsFunds((prev) => prev.filter((f) => f.id !== id))}
-            />
+              {forecastSubMode === 'forecast' ? (
+                <ForecastAndAnalyticsView
+                  viewYear={viewYear}
+                  viewMonth={viewMonth}
+                  transactions={transactions}
+                  expenseCategories={expenseCategories}
+                  goals={goals}
+                  maaserSettings={maaserSettings}
+                  savingsFunds={savingsFunds}
+                  onQuickAddTransaction={(tx) =>
+                    setTransactions((prev) => [
+                      { ...tx, id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` },
+                      ...prev,
+                    ])
+                  }
+                />
+              ) : (
+                <CompareSection
+                  today={today}
+                  transactions={transactions}
+                  maaserDonations={maaserDonations}
+                />
+              )}
+            </div>
           )}
         </main>
       </div>
 
       {/* Add Transaction Modal */}
       {isAddTxModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 shadow-xl space-y-5">
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/35 backdrop-blur-xs flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="bg-white border border-slate-100 rounded-3xl max-w-md w-full p-6 shadow-xl space-y-5">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-bold text-slate-900">הוספת תנועה חדשה</h2>
               <button
                 type="button"
                 onClick={() => setIsAddTxModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg"
+                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-xl"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1970,7 +1947,7 @@ export default function App() {
                 />
               </div>
 
-              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 space-y-2 text-xs text-slate-700">
+              <div className="bg-slate-50 border border-slate-200/70 rounded-2xl p-3.5 space-y-2 text-xs text-slate-700">
                 <label className="flex items-center gap-2 cursor-pointer select-none">
                   <input
                     type="checkbox"
@@ -2055,12 +2032,6 @@ export default function App() {
               f.id === fundId ? { ...f, currentAmount: f.currentAmount + amount } : f
             )
           );
-          setTimeout(() => {
-            triggerSavingsPopup(
-              `הופקדו +${formatILS(amount)} לקרן החיסכון!`,
-              `החיסכון ננעל בהצלחה בקרן הייעודית.`
-            );
-          }, 80);
         }}
         onNavigateToForecast={() => setActiveTab('forecast')}
       />
@@ -2142,20 +2113,7 @@ function CalendarSection({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-      <div className="lg:col-span-8 bg-white border border-slate-200/80 rounded-2xl p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-bold text-slate-900">
-            לוח שנה תזרימי — {HE_MONTHS[viewMonth]} {viewYear}
-          </h2>
-          <div className="flex items-center gap-3 text-xs text-slate-400">
-            <span>הכנסה (+)</span>
-            <span>·</span>
-            <span>הוצאה (−)</span>
-            <span>·</span>
-            <span>מעשר</span>
-          </div>
-        </div>
-
+      <div className="lg:col-span-8">
         <div className="grid grid-cols-7 gap-2 mb-2">
           {HE_DAYS.map((d) => (
             <div key={d} className="text-center text-xs font-medium text-slate-400 py-1">
@@ -2166,7 +2124,7 @@ function CalendarSection({
 
         <div className="grid grid-cols-7 gap-2">
           {Array.from({ length: firstDay }).map((_, idx) => (
-            <div key={`empty-${idx}`} className="h-24 bg-slate-50/40 rounded-xl" />
+            <div key={`empty-${idx}`} className="h-24 bg-slate-50/40 rounded-2xl" />
           ))}
 
           {Array.from({ length: daysInMonth }).map((_, idx) => {
@@ -2175,7 +2133,7 @@ function CalendarSection({
             const info = byDay[dk];
             const intensity =
               info && info.expense > 0 && maxExpense > 0
-                ? Math.max(0.05, Math.min(0.22, (info.expense / maxExpense) * 0.22))
+                ? Math.max(0.04, Math.min(0.18, (info.expense / maxExpense) * 0.18))
                 : 0;
             const isSelected = selectedDay === dk;
 
@@ -2188,10 +2146,10 @@ function CalendarSection({
                   backgroundColor:
                     intensity > 0 ? `rgba(244, 63, 94, ${intensity.toFixed(2)})` : undefined,
                 }}
-                className={`h-24 p-2.5 rounded-xl border text-right flex flex-col justify-between transition-all ${
+                className={`h-24 p-2.5 rounded-2xl border text-right flex flex-col justify-between transition-all ${
                   isSelected
                     ? 'border-blue-600 ring-2 ring-blue-600/15 bg-white'
-                    : 'border-slate-200/80 hover:border-slate-300 bg-white'
+                    : 'border-slate-100 hover:border-slate-200 bg-white'
                 }`}
               >
                 <div className="flex items-center justify-between w-full">
@@ -2212,11 +2170,6 @@ function CalendarSection({
                       −{Math.round(info.expense).toLocaleString('he-IL')}
                     </div>
                   ) : null}
-                  {info?.maaser ? (
-                    <div className="text-[10px] font-semibold text-blue-600 font-mono-num truncate">
-                      מעשר: {Math.round(info.maaser).toLocaleString('he-IL')}
-                    </div>
-                  ) : null}
                 </div>
               </button>
             );
@@ -2225,23 +2178,23 @@ function CalendarSection({
       </div>
 
       {/* Selected Day Inspector */}
-      <div className="lg:col-span-4 bg-white border border-slate-200/80 rounded-2xl p-6">
+      <div className="lg:col-span-4 bg-slate-50/70 border border-slate-100 rounded-2xl p-5">
         <h3 className="text-sm font-bold text-slate-900 mb-3">
           {selectedDay ? `תנועות ביום ${selectedDay}` : 'בחרו יום בלוח השנה'}
         </h3>
 
         {!selectedDay ? (
-          <p className="text-xs text-slate-400 py-10 text-center">
-            לחצו על יום בלוח השנה כדי לצפות בפירוט התנועות של אותו יום.
+          <p className="text-xs text-slate-400 py-8 text-center">
+            לחצו על יום בלוח השנה כדי לצפות בתנועות של אותו יום.
           </p>
         ) : selectedDayTx.length === 0 && selectedDayMaaser.length === 0 ? (
-          <p className="text-xs text-slate-400 py-10 text-center">אין תנועות ביום זה.</p>
+          <p className="text-xs text-slate-400 py-8 text-center">אין תנועות ביום זה.</p>
         ) : (
-          <div className="space-y-2.5">
+          <div className="space-y-2">
             {selectedDayTx.map((t) => (
               <div
                 key={t.id}
-                className="p-3 bg-slate-50 border border-slate-200/70 rounded-xl flex items-center justify-between text-xs"
+                className="p-3 bg-white border border-slate-100 rounded-xl flex items-center justify-between text-xs"
               >
                 <div>
                   <div className="font-semibold text-slate-900">{t.categoryLabel}</div>
@@ -2250,7 +2203,7 @@ function CalendarSection({
                 <div className="flex items-center gap-2">
                   <span
                     className={`font-bold font-mono-num ${
-                      t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'
+                      t.type === 'income' ? 'text-emerald-600' : 'text-slate-800'
                     }`}
                   >
                     {t.type === 'income' ? '+' : '−'}
@@ -2259,25 +2212,12 @@ function CalendarSection({
                   <button
                     type="button"
                     onClick={() => onDeleteTx(t.id)}
-                    className="p-1 text-slate-400 hover:text-rose-600"
+                    className="p-1 text-slate-300 hover:text-rose-600"
                     aria-label="מחק"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
-              </div>
-            ))}
-
-            {selectedDayMaaser.map((d) => (
-              <div
-                key={d.id}
-                className="p-3 bg-blue-50/50 border border-blue-200/70 rounded-xl flex items-center justify-between text-xs"
-              >
-                <div>
-                  <div className="font-semibold text-blue-900">מעשר: {d.recipient}</div>
-                  <div className="text-blue-600 mt-0.5">{d.categoryLabel}</div>
-                </div>
-                <span className="font-bold text-blue-700 font-mono-num">{formatILS(d.amount)}</span>
               </div>
             ))}
           </div>
@@ -2350,7 +2290,7 @@ function CategoriesSection({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-      <div className="lg:col-span-8 bg-white border border-slate-200/80 rounded-2xl p-6">
+      <div className="lg:col-span-8 bg-white border border-slate-100 shadow-2xs rounded-3xl p-6 lg:p-7">
         <h2 className="text-sm font-bold text-slate-900 mb-6">
           פילוח הוצאות לפי קטגוריה — {HE_MONTHS[viewMonth]} {viewYear}
         </h2>
@@ -2428,8 +2368,8 @@ function CategoriesSection({
         </div>
       </div>
 
-      <div className="lg:col-span-4 bg-white border border-slate-200/80 rounded-2xl p-6 space-y-4">
-        <h3 className="text-sm font-bold text-slate-900">הוספת קטגוריה חדשה</h3>
+      <div className="lg:col-span-4 bg-white border border-slate-100 shadow-2xs rounded-3xl p-6 space-y-4">
+        <h3 className="text-sm font-bold text-slate-900">הוספת קטגוריה מותאמת</h3>
         <p className="text-xs text-slate-400">
           התאימו את הקטגוריות למשק הבית או לעסק שלכם.
         </p>
@@ -2471,7 +2411,7 @@ function CategoriesSection({
 
           <button
             type="submit"
-            className="w-full py-2 px-4 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors"
+            className="w-full py-2.5 px-4 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors"
           >
             + שמור קטגוריה
           </button>
@@ -2486,8 +2426,6 @@ function CategoriesSection({
 }
 
 function GoalsSection({
-  viewYear,
-  viewMonth,
   monthTransactions,
   expenseCategories,
   goals,
@@ -2511,84 +2449,73 @@ function GoalsSection({
   }, [monthTransactions]);
 
   return (
-    <div className="space-y-5">
-      <div>
-        <h2 className="text-sm font-bold text-slate-900">
-          יעדי תקציב חודשיים — {HE_MONTHS[viewMonth]} {viewYear}
-        </h2>
-        <p className="text-xs text-slate-400 mt-0.5">
-          קבעו תקרת הוצאה לכל קטגוריה ועקבו אחר קצב הניצול
-        </p>
-      </div>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {expenseCategories.map((c) => {
+        const goal = Number(goals[c.id]) || 0;
+        const spent = spentByCat[c.id] || 0;
+        const pct = goal > 0 ? Math.min(100, Math.round((spent / goal) * 100)) : 0;
+        const isOver = goal > 0 && spent > goal;
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {expenseCategories.map((c) => {
-          const goal = Number(goals[c.id]) || 0;
-          const spent = spentByCat[c.id] || 0;
-          const pct = goal > 0 ? Math.min(100, Math.round((spent / goal) * 100)) : 0;
-          const isOver = goal > 0 && spent > goal;
-
-          return (
-            <div key={c.id} className="bg-white border border-slate-200/80 rounded-2xl p-5 space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-bold text-slate-900">{c.label}</span>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="number"
-                    min="0"
-                    step="50"
-                    value={goal || ''}
-                    placeholder="הגדר יעד"
-                    onChange={(e) => onUpdateGoal(c.id, parseFloat(e.target.value) || 0)}
-                    className="w-24 px-2.5 py-1 text-xs bg-slate-50 border border-slate-200 rounded-xl font-mono-num text-left focus:bg-white focus:outline-none focus:border-blue-600"
-                  />
-                  <span className="text-xs text-slate-400">₪</span>
-                </div>
+        return (
+          <div key={c.id} className="bg-white border border-slate-100 shadow-2xs rounded-3xl p-5 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-bold text-slate-900">{c.label}</span>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="number"
+                  min="0"
+                  step="50"
+                  value={goal || ''}
+                  placeholder="הגדר יעד"
+                  onChange={(e) => onUpdateGoal(c.id, parseFloat(e.target.value) || 0)}
+                  className="w-24 px-2.5 py-1 text-xs bg-slate-50 border border-slate-200/80 rounded-xl font-mono-num text-left focus:bg-white focus:outline-none focus:border-blue-600"
+                />
+                <span className="text-xs text-slate-400">₪</span>
               </div>
+            </div>
 
-              {goal > 0 ? (
-                <>
-                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all ${
-                        pct < 80 ? 'bg-emerald-500' : !isOver ? 'bg-amber-500' : 'bg-rose-500'
-                      }`}
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-500 font-mono-num tabular-nums">
-                      {formatILS(spent)} מתוך {formatILS(goal)} ({pct}%)
+            {goal > 0 ? (
+              <>
+                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      pct < 80 ? 'bg-emerald-500' : !isOver ? 'bg-amber-500' : 'bg-rose-500'
+                    }`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500 font-mono-num tabular-nums">
+                    {formatILS(spent)} מתוך {formatILS(goal)} ({pct}%)
+                  </span>
+                  {isOver ? (
+                    <span className="text-rose-600 font-semibold font-mono-num">
+                      חריגה: {formatILS(spent - goal)}
                     </span>
-                    {isOver ? (
-                      <span className="text-rose-600 font-semibold font-mono-num">
-                        חריגה: {formatILS(spent - goal)}
-                      </span>
-                    ) : (
-                      <span className="text-emerald-600 font-medium font-mono-num">
-                        נותר: {formatILS(goal - spent)}
-                      </span>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <div className="text-xs text-slate-400 flex items-center justify-between pt-1">
-                  <span>הוצאה החודש: {formatILS(spent)}</span>
-                  {spent > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => onUpdateGoal(c.id, Math.ceil(spent / 100) * 100)}
-                      className="text-blue-600 hover:underline font-medium"
-                    >
-                      קבע {formatILS(Math.ceil(spent / 100) * 100)} כיעד
-                    </button>
+                  ) : (
+                    <span className="text-emerald-600 font-medium font-mono-num">
+                      נותר: {formatILS(goal - spent)}
+                    </span>
                   )}
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+              </>
+            ) : (
+              <div className="text-xs text-slate-400 flex items-center justify-between pt-1">
+                <span>הוצאה החודש: {formatILS(spent)}</span>
+                {spent > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => onUpdateGoal(c.id, Math.ceil(spent / 100) * 100)}
+                    className="text-blue-600 hover:underline font-medium"
+                  >
+                    קבע {formatILS(Math.ceil(spent / 100) * 100)} כיעד
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -2641,19 +2568,19 @@ function CompareSection({
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-5">
+        <div className="bg-white border border-slate-100 shadow-2xs rounded-3xl p-5">
           <div className="text-xs text-slate-400">הכנסות מול חודש קודם</div>
           <div className="text-xl font-bold text-slate-900 mt-1 font-mono-num">
             {formatILS(curM.income)} לעומת {formatILS(prevM.income)}
           </div>
         </div>
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-5">
+        <div className="bg-white border border-slate-100 shadow-2xs rounded-3xl p-5">
           <div className="text-xs text-slate-400">הוצאות מול חודש קודם</div>
           <div className="text-xl font-bold text-slate-900 mt-1 font-mono-num">
             {formatILS(curM.expense)} לעומת {formatILS(prevM.expense)}
           </div>
         </div>
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-5">
+        <div className="bg-white border border-slate-100 shadow-2xs rounded-3xl p-5">
           <div className="text-xs text-slate-400">מעשרות מול חודש קודם</div>
           <div className="text-xl font-bold text-blue-600 mt-1 font-mono-num">
             {formatILS(curM.maaser)} לעומת {formatILS(prevM.maaser)}
@@ -2661,7 +2588,7 @@ function CompareSection({
         </div>
       </div>
 
-      <div className="bg-white border border-slate-200/80 rounded-2xl p-6">
+      <div className="bg-white border border-slate-100 shadow-2xs rounded-3xl p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-bold text-slate-900">מגמת 6 חודשים אחרונים</h3>
           <div className="flex items-center gap-4 text-xs">
@@ -2814,9 +2741,6 @@ function RewardsAndSavingsSection({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-sm font-bold text-slate-900">קרנות חיסכון ויעדים רב-שנתיים</h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            ניהול קופות חיסכון ייעודיות ומעקב התמדה שבועי
-          </p>
         </div>
 
         <button
@@ -2837,7 +2761,7 @@ function RewardsAndSavingsSection({
               ? Math.min(100, Math.round((fund.currentAmount / fund.targetAmount) * 100))
               : 0;
           return (
-            <div key={fund.id} className="bg-white border border-slate-200/80 rounded-2xl p-5 space-y-4">
+            <div key={fund.id} className="bg-white border border-slate-100 shadow-2xs rounded-3xl p-5 space-y-4">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <div className="text-sm font-bold text-slate-900">{fund.name}</div>
@@ -2891,7 +2815,7 @@ function RewardsAndSavingsSection({
       </div>
 
       {/* Clean Streak Summary Card */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 flex flex-wrap items-center justify-between gap-6">
+      <div className="bg-white border border-slate-100 shadow-2xs rounded-3xl p-6 flex flex-wrap items-center justify-between gap-6">
         <div className="flex items-center gap-4">
           <div className="w-11 h-11 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
             <Flame className="w-5 h-5" />
@@ -2926,8 +2850,8 @@ function RewardsAndSavingsSection({
       </div>
 
       {isAddFundOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-6 shadow-xl space-y-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/35 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-100 rounded-3xl max-w-sm w-full p-6 shadow-xl space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-slate-900">קרן חיסכון חדשה</h3>
               <button
