@@ -5,12 +5,18 @@ const path = require('node:path');
 app.setPath('userData', path.join(app.getPath('appData'), 'BudgetMaaserPro'));
 
 function createWindow() {
+  const iconPath = path.join(
+    __dirname,
+    process.platform === 'win32' ? 'icon.ico' : 'icon.png'
+  );
+
   const mainWindow = new BrowserWindow({
     width: 1380,
     height: 880,
     minWidth: 960,
     minHeight: 640,
     title: 'כלכלת הבית ומעשרות Pro',
+    icon: iconPath,
     backgroundColor: '#F8FAFC',
     autoHideMenuBar: true,
     show: false,

@@ -8,9 +8,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
-    "build": "vite build",
-    "build:single": "vite build && node scripts/bundle-single-file.mjs",
-    "dist:exe": "vite build && node scripts/bundle-single-file.mjs && npx electron-builder --win portable --x64 --config electron-builder.json --publish never",
+    "build": "node scripts/generate-app-icon.mjs && vite build",
+    "build:single": "node scripts/generate-app-icon.mjs && vite build && node scripts/bundle-single-file.mjs",
+    "dist:exe": "node scripts/generate-app-icon.mjs && vite build && node scripts/bundle-single-file.mjs && npx electron-builder --win portable --x64 --config electron-builder.json --publish never",
     "preview": "vite preview",
     "clean": "rm -rf dist release server.js",
     "lint": "tsc --noEmit"

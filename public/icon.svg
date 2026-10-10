@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" fill="none">
+  <defs>
+    <linearGradient id="bgGrad" x1="24" y1="16" x2="232" y2="240" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2563EB" />
+      <stop offset="100%" stop-color="#1E3A8A" />
+    </linearGradient>
+    <linearGradient id="emeraldGrad" x1="0" y1="64" x2="0" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#34D399" />
+      <stop offset="100%" stop-color="#10B981" />
+    </linearGradient>
+  </defs>
+  <!-- Squircle Background -->
+  <rect x="12" y="12" width="232" height="232" rx="56" fill="url(#bgGrad)" />
+  <rect x="14" y="14" width="228" height="228" rx="54" stroke="#FFFFFF" stroke-opacity="0.16" stroke-width="4" />
+
+  <!-- Ascending Financial & Maaser Bars (RTL aligned: right to left growth) -->
+  <!-- Right Bar (Base) -->
+  <rect x="164" y="132" width="32" height="68" rx="12" fill="#93C5FD" />
+  <!-- Middle Bar -->
+  <rect x="112" y="98" width="32" height="102" rx="12" fill="#FFFFFF" />
+  <!-- Left Tall Bar (Growth / Savings) -->
+  <rect x="60" y="64" width="32" height="136" rx="12" fill="url(#emeraldGrad)" />
+
+  <!-- Warm Gold Coin / Maaser Emblem -->
+  <circle cx="180" cy="82" r="22" fill="#FBBF24" />
+  <circle cx="180" cy="82" r="15" stroke="#FEF3C7" stroke-opacity="0.7" stroke-width="3" />
+</svg>

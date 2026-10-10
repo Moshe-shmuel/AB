@@ -929,8 +929,19 @@ export default function App() {
               }}
               className="flex items-center gap-2.5 group"
             >
-              <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-2xs group-hover:bg-blue-700 transition-colors">
-                כ
+              <div className="w-8 h-8 rounded-xl overflow-hidden shadow-2xs shrink-0">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 256 256"
+                  className="w-full h-full"
+                  aria-hidden="true"
+                >
+                  <rect width="256" height="256" rx="56" fill="#2563EB" />
+                  <rect x="164" y="132" width="32" height="68" rx="10" fill="#93C5FD" />
+                  <rect x="112" y="98" width="32" height="102" rx="10" fill="#FFFFFF" />
+                  <rect x="60" y="64" width="32" height="136" rx="10" fill="#34D399" />
+                  <circle cx="180" cy="82" r="22" fill="#FBBF24" />
+                </svg>
               </div>
               <span className="text-[15px] font-bold tracking-tight text-slate-900 font-display">
                 כלכלת הבית
