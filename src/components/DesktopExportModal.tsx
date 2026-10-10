@@ -1,19 +1,19 @@
 import React, { useRef, useState } from 'react';
 import {
+  CheckCircle2,
+  Database,
   Download,
+  FileCode2,
   FileSpreadsheet,
-  HardDriveDownload,
-  Monitor,
   RotateCcw,
   Upload,
   X,
-  CheckCircle2,
 } from 'lucide-react';
 import { AppBackupPayload } from '../types';
 import {
   exportBackupJSON,
-  exportDesktopExecutableApp,
   exportMaaserCSV,
+  exportStandaloneSingleFileHTML,
   exportTransactionsCSV,
 } from '../utils/portableExporter';
 
@@ -61,109 +61,109 @@ export const DesktopExportModal: React.FC<DesktopExportModalProps> = ({
     reader.readAsText(file);
   };
 
+  const handleDownloadSingleFile = async () => {
+    const ok = await exportStandaloneSingleFileHTML(backupPayload);
+    if (!ok) {
+      setImportStatus(
+        'בסביבת פיתוח חיה מומלץ להוריד קובץ גיבוי (.JSON) או להשתמש בקובץ ה-SingleFile שנוצר ב-GitHub Actions.'
+      );
+      setTimeout(() => setImportStatus(null), 5000);
+    } else {
+      setImportStatus('קובץ האפליקציה העצמאי (.HTML) הורד בהצלחה עם כל הנתונים שלך!');
+      setTimeout(() => setImportStatus(null), 4000);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
-      <div className="bg-white border border-slate-200 rounded-xl max-w-2xl w-full p-6 shadow-xl space-y-6">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/35 backdrop-blur-xs p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="backup-modal-title"
+    >
+      <div className="bg-white border border-slate-100 rounded-3xl max-w-xl w-full p-6 lg:p-7 shadow-xl space-y-6">
         <div className="flex items-center justify-between border-b border-slate-100 pb-4">
           <div className="flex items-center gap-2.5">
-            <Monitor className="w-5 h-5 text-blue-700" />
-            <h2 className="text-lg font-bold text-slate-900">
-              הורדת תוכנה שולחנית ל-Windows וניהול גיבויים
-            </h2>
+            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+              <Database className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 id="backup-modal-title" className="text-base font-bold text-slate-900">
+                גיבוי, ייצוא וניהול נתונים
+              </h2>
+              <p className="text-xs text-slate-400">
+                שמירה ושחזור של כלל התנועות, המעשרות, היעדים והקרנות
+              </p>
+            </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg"
+            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl"
             aria-label="סגור חלון"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Section 1: Windows Desktop App (.HTA / Standalone) */}
-        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
-          <div className="text-sm font-bold text-slate-900">
-            1. הפעלה כתוכנת שולחן עבודה עצמאית ב-Windows (ללא דפדפן)
-          </div>
-          <p className="text-xs text-slate-600 leading-relaxed">
-            ניתן להוריד קובץ <strong>Windows Desktop Application (.hta)</strong> או קובץ{' '}
-            <strong>Portable Offline (.html)</strong> המכילים את התוכנה ואת כל הנתונים שהזנתם עד כה.
-            בלחיצה כפולה ב-Windows, קובץ ה-HTA נפתח בחלון תוכנה שולחני ייעודי ועובד גם ללא חיבור לאינטרנט.
-          </p>
-          <div className="flex flex-wrap gap-3 pt-1">
-            <button
-              type="button"
-              onClick={() => exportDesktopExecutableApp(backupPayload, 'hta')}
-              className="px-4 py-2.5 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg transition-colors flex items-center gap-2 whitespace-nowrap shrink-0"
-            >
-              <Monitor className="w-4 h-4" />
-              <span>הורד תוכנה שולחנית ל-Windows (.HTA)</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => exportDesktopExecutableApp(backupPayload, 'html')}
-              className="px-4 py-2.5 text-xs font-semibold text-slate-800 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg transition-colors flex items-center gap-2 whitespace-nowrap shrink-0"
-            >
-              <HardDriveDownload className="w-4 h-4" />
-              <span>הורד קובץ Portable עצמאי (.HTML)</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Section 2: Excel CSV & JSON Database Backup */}
+        {/* Section 1: JSON Backup & Excel CSV Export */}
         <div className="space-y-3">
-          <div className="text-sm font-bold text-slate-900">
-            2. ייצוא לאקסל (CSV) וגיבוי/שחזור מסד נתונים (JSON)
+          <div className="text-xs font-bold text-slate-500">
+            גיבוי מסד הנתונים (JSON) וייצוא לאקסל (CSV)
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button
               type="button"
-              onClick={() => exportTransactionsCSV(backupPayload.transactions)}
-              className="p-3 text-right bg-white border border-slate-200 hover:border-slate-300 rounded-lg flex items-center justify-between transition-colors"
-            >
-              <div>
-                <div className="text-xs font-bold text-slate-900">ייצוא תנועות תקציב (CSV)</div>
-                <div className="text-[11px] text-slate-500">מותאם לפתיחה בעברית ב-Excel</div>
-              </div>
-              <FileSpreadsheet className="w-4 h-4 text-emerald-700 shrink-0" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => exportMaaserCSV(backupPayload.maaserDonations)}
-              className="p-3 text-right bg-white border border-slate-200 hover:border-slate-300 rounded-lg flex items-center justify-between transition-colors"
-            >
-              <div>
-                <div className="text-xs font-bold text-slate-900">ייצוא פנקס מעשרות (CSV)</div>
-                <div className="text-[11px] text-slate-500">כולל פירוט קבלות וסעיף 46</div>
-              </div>
-              <FileSpreadsheet className="w-4 h-4 text-blue-700 shrink-0" />
-            </button>
-
-            <button
-              type="button"
               onClick={() => exportBackupJSON(backupPayload)}
-              className="p-3 text-right bg-white border border-slate-200 hover:border-slate-300 rounded-lg flex items-center justify-between transition-colors"
+              className="p-3.5 text-right bg-slate-50/70 hover:bg-slate-100/80 border border-slate-200/80 rounded-2xl flex items-center justify-between transition-colors"
             >
               <div>
                 <div className="text-xs font-bold text-slate-900">שמירת קובץ גיבוי מלא (.JSON)</div>
-                <div className="text-[11px] text-slate-500">שומר תנועות, מעשרות, יעדים וקרנות</div>
+                <div className="text-[11px] text-slate-500 mt-0.5">
+                  שומר תנועות, קבועות, מעשרות וקרנות
+                </div>
               </div>
-              <Download className="w-4 h-4 text-slate-700 shrink-0" />
+              <Download className="w-4 h-4 text-blue-600 shrink-0" />
             </button>
 
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="p-3 text-right bg-white border border-slate-200 hover:border-slate-300 rounded-lg flex items-center justify-between transition-colors"
+              className="p-3.5 text-right bg-slate-50/70 hover:bg-slate-100/80 border border-slate-200/80 rounded-2xl flex items-center justify-between transition-colors"
             >
               <div>
                 <div className="text-xs font-bold text-slate-900">שחזור מקובץ גיבוי (.JSON)</div>
-                <div className="text-[11px] text-slate-500">טעינת נתונים מקובץ שמור במחשב</div>
+                <div className="text-[11px] text-slate-500 mt-0.5">
+                  טעינת נתונים מקובץ שמור במחשב
+                </div>
               </div>
-              <Upload className="w-4 h-4 text-slate-700 shrink-0" />
+              <Upload className="w-4 h-4 text-blue-600 shrink-0" />
             </button>
+
+            <button
+              type="button"
+              onClick={() => exportTransactionsCSV(backupPayload.transactions)}
+              className="p-3.5 text-right bg-white hover:bg-slate-50 border border-slate-200/80 rounded-2xl flex items-center justify-between transition-colors"
+            >
+              <div>
+                <div className="text-xs font-bold text-slate-900">ייצוא תנועות לאקסל (CSV)</div>
+                <div className="text-[11px] text-slate-500 mt-0.5">קידוד עברית מלא ל-Excel</div>
+              </div>
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => exportMaaserCSV(backupPayload.maaserDonations)}
+              className="p-3.5 text-right bg-white hover:bg-slate-50 border border-slate-200/80 rounded-2xl flex items-center justify-between transition-colors"
+            >
+              <div>
+                <div className="text-xs font-bold text-slate-900">ייצוא פנקס מעשרות (CSV)</div>
+                <div className="text-[11px] text-slate-500 mt-0.5">כולל קבלות וסעיף 46</div>
+              </div>
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
+            </button>
+
             <input
               ref={fileInputRef}
               type="file"
@@ -174,43 +174,48 @@ export const DesktopExportModal: React.FC<DesktopExportModalProps> = ({
           </div>
 
           {importStatus && (
-            <div className="flex items-center gap-2 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-2.5">
+            <div className="flex items-center gap-2 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl p-3">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
               <span>{importStatus}</span>
             </div>
           )}
         </div>
 
-        {/* Section 3: GitHub Actions Single-File Build & Release Info */}
-        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
-          <div className="text-sm font-bold text-slate-900">
-            3. אוטומציית GitHub Actions — קימפול לקובץ בודד בכל קומיט ומהדורה (Release)
+        {/* Section 2: Real Windows .EXE & Single-File Standalone HTML */}
+        <div className="bg-slate-50/80 border border-slate-200/70 rounded-2xl p-4 space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex-1 min-w-[240px]">
+              <div className="text-xs font-bold text-slate-900">
+                קובץ הרצה אמיתי ל-Windows (<code className="font-mono-num">.EXE</code>) וקובץ HTML יחיד
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                בכל Push או Release ב-GitHub Actions (או בהרצת{' '}
+                <code className="px-1 py-0.5 bg-white border border-slate-200 rounded font-mono-num">
+                  npm run build:single
+                </code>{' '}
+                ב-Windows), המערכת מקמפלת אוטומטית באמצעות מהדר C# של Windows את הקובץ{' '}
+                <code className="px-1 py-0.5 bg-white border border-slate-200 rounded font-mono-num text-blue-700 font-semibold">
+                  release/Budget-Maaser-Pro.exe
+                </code>{' '}
+                (קובץ <code className="font-mono-num">.exe</code> עצמאי יחיד הכולל שרת מקומי פנימי וחלון שולחני ייעודי) לצד{' '}
+                <code className="px-1 py-0.5 bg-white border border-slate-200 rounded font-mono-num">
+                  Budget-Maaser-Pro-SingleFile.html
+                </code>
+                .
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleDownloadSingleFile}
+              className="px-3.5 py-2 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors flex items-center gap-1.5 shrink-0"
+            >
+              <FileCode2 className="w-4 h-4" />
+              <span>הורד קובץ HTML יחיד</span>
+            </button>
           </div>
-          <p className="text-xs text-slate-600 leading-relaxed">
-            הפרויקט כולל את קובץ הריצה{' '}
-            <code className="px-1.5 py-0.5 bg-white border border-slate-200 rounded font-mono-num">
-              .github/workflows/build-and-release.yml
-            </code>{' '}
-            וסקריפט האיחוד{' '}
-            <code className="px-1.5 py-0.5 bg-white border border-slate-200 rounded font-mono-num">
-              npm run build:single
-            </code>
-            :
-          </p>
-          <ul className="text-xs text-slate-600 list-disc list-inside space-y-1">
-            <li>
-              <strong>בכל הוספת קומיט (Push):</strong> המערכת מתקמפלת אוטומטית ומייצרת Artifact של קובץ יחיד עצמאי (
-              <code className="font-mono-num">Budget-Maaser-Pro-SingleFile.html</code> ו-
-              <code className="font-mono-num">Budget-Maaser-Pro-Desktop.hta</code>).
-            </li>
-            <li>
-              <strong>ביצירת מהדורה / תג חדש (למשל <code className="font-mono-num">v1.0.0</code>):</strong>{' '}
-              הקובץ הבודד מצורף אוטומטית לנכסי המהדורה (GitHub Release Assets) להורדה ישירה.
-            </li>
-          </ul>
         </div>
 
-        {/* Section 4: Data Management (Demo / Clear) */}
+        {/* Section 3: Data Management (Demo / Clear) */}
         <div className="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <button
@@ -219,19 +224,19 @@ export const DesktopExportModal: React.FC<DesktopExportModalProps> = ({
                 onLoadDemo();
                 onClose();
               }}
-              className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+              className="px-3.5 py-2 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
             >
-              טען נתוני הדגמה לדוגמה
+              טען נתוני הדגמה
             </button>
 
             {!confirmReset ? (
               <button
                 type="button"
                 onClick={() => setConfirmReset(true)}
-                className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition-colors flex items-center gap-1"
+                className="px-3.5 py-2 text-xs font-medium text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors flex items-center gap-1.5"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>איפוס כל הנתונים</span>
+                <span>איפוס נתונים</span>
               </button>
             ) : (
               <div className="flex items-center gap-2">
@@ -242,14 +247,14 @@ export const DesktopExportModal: React.FC<DesktopExportModalProps> = ({
                     setConfirmReset(false);
                     onClose();
                   }}
-                  className="px-3 py-1.5 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg"
+                  className="px-3.5 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl"
                 >
                   אישור מחיקה מלאה
                 </button>
                 <button
                   type="button"
                   onClick={() => setConfirmReset(false)}
-                  className="px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
+                  className="px-2.5 py-2 text-xs text-slate-600 hover:bg-slate-100 rounded-xl"
                 >
                   ביטול
                 </button>
@@ -260,7 +265,7 @@ export const DesktopExportModal: React.FC<DesktopExportModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50"
+            className="px-5 py-2 text-xs font-semibold text-slate-700 border border-slate-200 rounded-xl hover:bg-slate-50"
           >
             סגור
           </button>

@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -17,9 +18,9 @@ fs.mkdirSync(releaseDir, { recursive: true });
 
 let html = fs.readFileSync(path.join(distDir, 'index.html'), 'utf-8');
 
-// 1. Inline all local CSS <link rel="stylesheet" ... href="...">
+// 1. Inline all local CSS <link ... rel="stylesheet" ... href="...">
 html = html.replace(
-  /<link\b[^>]*rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi,
+  /<link\b[^>]*href=["']([^"']+\.css)["'][^>]*>/gi,
   (fullMatch, href) => {
     const cleanPath = href.replace(/^\//, '');
     const cssFile = path.join(distDir, cleanPath);
@@ -31,9 +32,10 @@ html = html.replace(
   }
 );
 
-// 2. Inline all local JS <script ... src="..."></script>
+// 2. Extract and inline all local JS <script ... src="..."></script> and place right before </body>
+const inlineScripts = [];
 html = html.replace(
-  /<script\b[^>]*src=["']([^"']+)["'][^>]*>\s*<\/script>/gi,
+  /<script\b[^>]*src=["']([^"']+\.js)["'][^>]*>\s*<\/script>/gi,
   (fullMatch, src) => {
     const cleanPath = src.replace(/^\//, '');
     const jsFile = path.join(distDir, cleanPath);
@@ -41,38 +43,60 @@ html = html.replace(
       const jsContent = fs
         .readFileSync(jsFile, 'utf-8')
         .replace(/<\/script>/gi, '<\\/script>');
-      return `<script type="module">\n${jsContent}\n</script>`;
+      inlineScripts.push(`<script type="module">\n${jsContent}\n</script>`);
+      return '';
     }
     return fullMatch;
   }
 );
 
+if (inlineScripts.length > 0) {
+  html = html.replace('</body>', `${inlineScripts.join('\n')}\n  </body>`);
+}
+
 // 3. Write standalone single-file HTML
 const singleHtmlPath = path.join(releaseDir, 'Budget-Maaser-Pro-SingleFile.html');
 fs.writeFileSync(singleHtmlPath, '\ufeff' + html, 'utf-8');
 
-// 4. Write standalone Windows Desktop Application (.hta) with HTA header injected in <head>
-const htaHeader = `
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <HTA:APPLICATION
-      ID="BudgetMaaserProApp"
-      APPLICATIONNAME="כלכלת הבית ומעשרות Pro"
-      BORDER="thick"
-      BORDERSTYLE="normal"
-      CAPTION="yes"
-      MAXIMIZEBUTTON="yes"
-      MINIMIZEBUTTON="yes"
-      SHOWINTASKBAR="yes"
-      SINGLEINSTANCE="yes"
-      SYSMENU="yes"
-      VERSION="2.0"
-      WINDOWSTATE="maximize"
-    />`;
-
-const htaContent = html.replace('<head>', `<head>${htaHeader}`);
-const singleHtaPath = path.join(releaseDir, 'Budget-Maaser-Pro-Desktop.hta');
-fs.writeFileSync(singleHtaPath, '\ufeff' + htaContent, 'utf-8');
-
-console.log('✅ Single-file bundle created successfully:');
+console.log('✅ Single-file HTML created successfully:');
 console.log('   -', singleHtmlPath);
-console.log('   -', singleHtaPath);
+
+// 4. On Windows (including GitHub Actions windows-latest), compile real native Windows .EXE
+const csSourcePath = path.join(__dirname, 'DesktopLauncher.cs');
+const exeOutputPath = path.join(releaseDir, 'Budget-Maaser-Pro.exe');
+
+const cscCandidates = [
+  'C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe',
+  'C:\\Windows\\Microsoft.NET\\Framework\\v4.0.30319\\csc.exe',
+];
+
+const cscPath = cscCandidates.find((p) => fs.existsSync(p));
+
+if (cscPath && fs.existsSync(csSourcePath)) {
+  try {
+    execFileSync(
+      cscPath,
+      [
+        '/nologo',
+        '/target:winexe',
+        '/optimize+',
+        `/out:${exeOutputPath}`,
+        `/resource:${singleHtmlPath},BudgetMaaserPro.SingleFile.html`,
+        '/r:System.dll',
+        '/r:System.Windows.Forms.dll',
+        '/r:System.Drawing.dll',
+        csSourcePath,
+      ],
+      { stdio: 'inherit' }
+    );
+    console.log('✅ Real Windows Desktop .EXE compiled successfully:');
+    console.log('   -', exeOutputPath);
+  } catch (err) {
+    console.error('❌ Failed to compile Windows .EXE with csc.exe:', err);
+    process.exit(1);
+  }
+} else {
+  console.log(
+    'ℹ️ Windows csc.exe not found on this OS (running on Linux/macOS). GitHub Actions (windows-latest) will compile release/Budget-Maaser-Pro.exe automatically.'
+  );
+}

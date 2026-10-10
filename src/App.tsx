@@ -14,6 +14,7 @@ import {
   HeartHandshake,
   LayoutDashboard,
   Monitor,
+  PiggyBank,
   Plus,
   Search,
   Target,
@@ -96,11 +97,11 @@ function getWeekStart(d: Date): Date {
 
 export default function App() {
   const today = useMemo(() => new Date(), []);
-  // 4 Primary Screens: 'overview' | 'maaserot' | 'goals' | 'forecast'
+  // 5 Primary Screens: 'overview' | 'goals' | 'rewards' | 'maaserot' | 'forecast'
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
-  // Sub-views inside the 4 primary screens for a calm, consolidated hierarchy
+  // Sub-views inside the primary screens
   const [overviewSubMode, setOverviewSubMode] = useState<'ledger' | 'recurring' | 'calendar'>('ledger');
-  const [goalsSubMode, setGoalsSubMode] = useState<'goals' | 'categories' | 'savings'>('goals');
+  const [goalsSubMode, setGoalsSubMode] = useState<'goals' | 'categories'>('goals');
   const [forecastSubMode, setForecastSubMode] = useState<'forecast' | 'compare'>('forecast');
 
   const [viewYear, setViewYear] = useState<number>(today.getFullYear());
@@ -317,10 +318,12 @@ export default function App() {
       } else if (e.key === '1') {
         setActiveTab('overview');
       } else if (e.key === '2') {
-        setActiveTab('maaserot');
-      } else if (e.key === '3') {
         setActiveTab('goals');
+      } else if (e.key === '3') {
+        setActiveTab('rewards');
       } else if (e.key === '4') {
+        setActiveTab('maaserot');
+      } else if (e.key === '5') {
         setActiveTab('forecast');
       }
     };
@@ -847,38 +850,42 @@ export default function App() {
     } catch {}
   };
 
-  // 4 Calm, Clear Primary Screens
+  // Clean, Single-Line Navigation Items (Separated Budget & Savings)
   const navItems: {
     id: ActiveTab;
     label: string;
-    subtitle: string;
     icon: React.ComponentType<{ className?: string }>;
   }[] = [
     {
       id: 'overview',
       label: 'תנועות ושוטף',
-      subtitle: 'יומן חודשי, קבועות ולוח שנה',
       icon: LayoutDashboard,
-    },
-    {
-      id: 'maaserot',
-      label: 'מעשרות וצדקה',
-      subtitle: 'חישוב מעשר/חומש ופנקס תרומות',
-      icon: HeartHandshake,
     },
     ...(a11yPrefs.simplifiedMode
       ? []
       : ([
           {
             id: 'goals',
-            label: 'תקציב וחיסכון',
-            subtitle: 'יעדים, קטגוריות וקרנות חיסכון',
+            label: 'תקציב וקטגוריות',
             icon: Target,
           },
           {
+            id: 'rewards',
+            label: 'חיסכון וקרנות',
+            icon: PiggyBank,
+          },
+        ] as const)),
+    {
+      id: 'maaserot',
+      label: 'מעשרות וצדקה',
+      icon: HeartHandshake,
+    },
+    ...(a11yPrefs.simplifiedMode
+      ? []
+      : ([
+          {
             id: 'forecast',
             label: 'תחזית ומגמות',
-            subtitle: 'צפי סוף חודש והשוואת תקופות',
             icon: Activity,
           },
         ] as const)),
@@ -896,11 +903,11 @@ export default function App() {
         דלג לתוכן הראשי
       </a>
 
-      {/* Soft, Airy Right Sidebar */}
-      <aside className="w-full lg:w-64 bg-white border-b lg:border-b-0 lg:border-l border-slate-100 shrink-0 flex flex-col justify-between lg:sticky lg:top-0 lg:h-screen z-20">
-        <div className="p-6 space-y-7">
+      {/* Minimal, Ultra-Clean Right Sidebar */}
+      <aside className="w-full lg:w-60 bg-white border-b lg:border-b-0 lg:border-l border-slate-100 shrink-0 flex flex-col justify-between lg:sticky lg:top-0 lg:h-screen z-20">
+        <div className="p-5 space-y-6">
           {/* Brand Header */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between px-1">
             <a
               href="#overview"
               onClick={(e) => {
@@ -908,19 +915,14 @@ export default function App() {
                 setActiveTab('overview');
                 setOverviewSubMode('ledger');
               }}
-              className="flex items-center gap-3"
+              className="flex items-center gap-2.5 group"
             >
-              <div className="w-9 h-9 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-xs">
+              <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-2xs group-hover:bg-blue-700 transition-colors">
                 כ
               </div>
-              <div>
-                <div className="text-base font-bold tracking-tight text-slate-900 font-display leading-none">
-                  כלכלת הבית
-                </div>
-                <div className="text-xs text-slate-400 mt-1">
-                  ניהול תקציב ומעשרות
-                </div>
-              </div>
+              <span className="text-[15px] font-bold tracking-tight text-slate-900 font-display">
+                כלכלת הבית
+              </span>
             </a>
 
             <div className="flex items-center gap-1.5 lg:hidden">
@@ -935,7 +937,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setIsAddTxModalOpen(true)}
-                className="px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 rounded-xl flex items-center gap-1"
+                className="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-xl flex items-center gap-1"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>תנועה חדשה</span>
@@ -948,16 +950,16 @@ export default function App() {
             type="button"
             onClick={() => setIsAddTxModalOpen(true)}
             title="קיצור מקלדת: N"
-            className="hidden lg:flex w-full py-3 px-4 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-2xl transition-all items-center justify-center gap-2 shadow-xs"
+            className="hidden lg:flex w-full py-2.5 px-4 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-all items-center justify-center gap-2 shadow-2xs"
           >
             <Plus className="w-4 h-4" />
-            <span>הוספת תנועה חדשה</span>
+            <span>תנועה חדשה</span>
           </button>
 
-          {/* 4-Screen Clean Navigation */}
+          {/* Clean Single-Line Navigation */}
           <nav
             aria-label="ניווט ראשי"
-            className="flex lg:flex-col gap-1.5 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0"
+            className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0"
           >
             {navItems.map((item) => {
               const Icon = item.icon;
@@ -970,64 +972,63 @@ export default function App() {
                     setActiveTab(item.id);
                     setEditingId(null);
                   }}
-                  className={`px-3.5 py-3 text-xs rounded-2xl transition-all flex items-center gap-3 whitespace-nowrap shrink-0 text-right ${
+                  className={`relative px-3.5 py-2.5 text-[13px] rounded-xl transition-all flex items-center gap-3 whitespace-nowrap shrink-0 text-right ${
                     isActive
-                      ? 'bg-slate-900 text-white font-semibold shadow-2xs'
+                      ? 'bg-blue-50/80 text-blue-700 font-semibold'
                       : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium'
                   }`}
                 >
+                  {isActive && (
+                    <span
+                      aria-hidden="true"
+                      className="hidden lg:block absolute right-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-blue-600 rounded-l-full"
+                    />
+                  )}
                   <Icon
-                    className={`w-4 h-4 shrink-0 ${
-                      isActive ? 'text-blue-400' : 'text-slate-400'
+                    className={`w-4 h-4 shrink-0 transition-colors ${
+                      isActive ? 'text-blue-600' : 'text-slate-400'
                     }`}
                   />
-                  <div>
-                    <div className="leading-none">{item.label}</div>
-                    <div
-                      className={`hidden lg:block text-[11px] mt-1 font-normal ${
-                        isActive ? 'text-slate-300' : 'text-slate-400'
-                      }`}
-                    >
-                      {item.subtitle}
-                    </div>
-                  </div>
+                  <span>{item.label}</span>
                 </button>
               );
             })}
           </nav>
         </div>
 
-        {/* Quiet Bottom Tools & Settings */}
-        <div className="hidden lg:block p-5 border-t border-slate-100 space-y-1">
-          <button
-            type="button"
-            onClick={() => setIsA11yModalOpen(true)}
-            className="w-full px-3.5 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-colors flex items-center justify-between"
-          >
-            <span className="flex items-center gap-2.5">
+        {/* Compact, Minimal Bottom Utility Bar */}
+        <div className="hidden lg:block p-4 border-t border-slate-100">
+          <div className="grid grid-cols-3 gap-1">
+            <button
+              type="button"
+              onClick={() => setIsA11yModalOpen(true)}
+              title="נגישות וגודל תצוגה"
+              className="py-2 px-2 text-[11px] font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-colors flex flex-col items-center gap-1"
+            >
               <Accessibility className="w-4 h-4 text-slate-400" />
-              <span>נגישות וגודל תצוגה</span>
-            </span>
-            <span className="text-[10px] font-bold text-slate-400 font-mono-num">A+</span>
-          </button>
+              <span>נגישות</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => exportTransactionsCSV(transactions)}
-            className="w-full px-3.5 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-colors flex items-center gap-2.5"
-          >
-            <Download className="w-4 h-4 text-slate-400" />
-            <span>ייצוא לאקסל (CSV)</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => exportTransactionsCSV(transactions)}
+              title="ייצוא לאקסל (CSV)"
+              className="py-2 px-2 text-[11px] font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-colors flex flex-col items-center gap-1"
+            >
+              <Download className="w-4 h-4 text-slate-400" />
+              <span>אקסל</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setIsExportModalOpen(true)}
-            className="w-full px-3.5 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-colors flex items-center gap-2.5"
-          >
-            <Monitor className="w-4 h-4 text-slate-400" />
-            <span>גיבוי ותוכנה שולחנית</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setIsExportModalOpen(true)}
+              title="גיבוי, ייצוא וניהול נתונים"
+              className="py-2 px-2 text-[11px] font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-colors flex flex-col items-center gap-1"
+            >
+              <Monitor className="w-4 h-4 text-slate-400" />
+              <span>גיבוי</span>
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -1631,7 +1632,7 @@ export default function App() {
           )}
 
           {/* =================================================================
-           * SCREEN 3: BUDGET & SAVINGS (תקציב וחיסכון — יעדים, קטגוריות וקרנות)
+           * SCREEN 3: BUDGET & CATEGORIES (תקציב וקטגוריות)
            * ================================================================= */}
           {activeTab === 'goals' && (
             <div className="space-y-6">
@@ -1657,29 +1658,9 @@ export default function App() {
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    פילוח קטגוריות
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setGoalsSubMode('savings')}
-                    className={`px-4 py-1.5 rounded-xl font-semibold transition-all ${
-                      goalsSubMode === 'savings'
-                        ? 'bg-white text-slate-900 shadow-2xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    קרנות חיסכון ({savingsFunds.length})
+                    פילוח והוספת קטגוריות
                   </button>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => triggerSavingsPopup()}
-                  className="px-3.5 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors flex items-center gap-1.5"
-                >
-                  <Award className="w-3.5 h-3.5" />
-                  <span>מדד חיסכון מול צפי</span>
-                </button>
               </div>
 
               {goalsSubMode === 'goals' && (
@@ -1713,32 +1694,52 @@ export default function App() {
                   }
                 />
               )}
+            </div>
+          )}
 
-              {goalsSubMode === 'savings' && (
-                <RewardsAndSavingsSection
-                  savingsStats={savingsStats}
-                  savingsFunds={savingsFunds}
-                  newFundName={newFundName}
-                  setNewFundName={setNewFundName}
-                  newFundTarget={newFundTarget}
-                  setNewFundTarget={setNewFundTarget}
-                  newFundCurrent={newFundCurrent}
-                  setNewFundCurrent={setNewFundCurrent}
-                  onAddFund={(fund) => setSavingsFunds((prev) => [...prev, fund])}
-                  onUpdateFundAmount={(id, delta) =>
-                    setSavingsFunds((prev) =>
-                      prev.map((f) =>
-                        f.id === id
-                          ? { ...f, currentAmount: Math.max(0, f.currentAmount + delta) }
-                          : f
-                      )
+          {/* =================================================================
+           * SCREEN 4: SAVINGS & FUNDS (חיסכון וקרנות — מופרד מהתקציב)
+           * ================================================================= */}
+          {activeTab === 'rewards' && (
+            <div className="space-y-6">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="text-xs text-slate-500">
+                  ניהול קופות חיסכון ייעודיות ומעקב אחר רצף חיסכון שבועי
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => triggerSavingsPopup()}
+                  className="px-3.5 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors flex items-center gap-1.5"
+                >
+                  <Award className="w-3.5 h-3.5" />
+                  <span>מדד חיסכון מול צפי</span>
+                </button>
+              </div>
+
+              <RewardsAndSavingsSection
+                savingsStats={savingsStats}
+                savingsFunds={savingsFunds}
+                newFundName={newFundName}
+                setNewFundName={setNewFundName}
+                newFundTarget={newFundTarget}
+                setNewFundTarget={setNewFundTarget}
+                newFundCurrent={newFundCurrent}
+                setNewFundCurrent={setNewFundCurrent}
+                onAddFund={(fund) => setSavingsFunds((prev) => [...prev, fund])}
+                onUpdateFundAmount={(id, delta) =>
+                  setSavingsFunds((prev) =>
+                    prev.map((f) =>
+                      f.id === id
+                        ? { ...f, currentAmount: Math.max(0, f.currentAmount + delta) }
+                        : f
                     )
-                  }
-                  onDeleteFund={(id) =>
-                    setSavingsFunds((prev) => prev.filter((f) => f.id !== id))
-                  }
-                />
-              )}
+                  )
+                }
+                onDeleteFund={(id) =>
+                  setSavingsFunds((prev) => prev.filter((f) => f.id !== id))
+                }
+              />
             </div>
           )}
 
