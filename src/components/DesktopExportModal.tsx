@@ -81,7 +81,7 @@ export const DesktopExportModal: React.FC<DesktopExportModalProps> = ({
       aria-modal="true"
       aria-labelledby="backup-modal-title"
     >
-      <div className="bg-white border border-slate-100 rounded-3xl max-w-xl w-full p-6 lg:p-7 shadow-xl space-y-6">
+      <div className="bg-white border border-slate-100 rounded-3xl max-w-xl w-full max-h-[90vh] overflow-y-auto p-6 lg:p-7 shadow-xl space-y-6">
         <div className="flex items-center justify-between border-b border-slate-100 pb-4">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">

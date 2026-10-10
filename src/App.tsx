@@ -903,7 +903,10 @@ export default function App() {
   const currentTabInfo = navItems.find((n) => n.id === activeTab) || navItems[0];
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col lg:flex-row" dir="rtl">
+    <div
+      className="min-h-screen lg:h-screen lg:overflow-hidden bg-[#F8FAFC] text-slate-900 flex flex-col lg:flex-row"
+      dir="rtl"
+    >
       {/* Skip to Main Content Link */}
       <a
         href="#main-content"
@@ -913,7 +916,7 @@ export default function App() {
       </a>
 
       {/* Minimal, Ultra-Clean Right Sidebar */}
-      <aside className="w-full lg:w-60 bg-white border-b lg:border-b-0 lg:border-l border-slate-100 shrink-0 flex flex-col justify-between lg:sticky lg:top-0 lg:h-screen z-20">
+      <aside className="w-full lg:w-60 bg-white border-b lg:border-b-0 lg:border-l border-slate-100 shrink-0 flex flex-col justify-between lg:h-full lg:overflow-y-auto z-20">
         <div className="p-5 space-y-6">
           {/* Brand Header */}
           <div className="flex items-center justify-between px-1">
@@ -1042,9 +1045,9 @@ export default function App() {
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 lg:h-full lg:overflow-hidden">
         {/* Minimal, Calm Top Header Bar: Title + Month Selector Only */}
-        <header className="bg-white/80 backdrop-blur-md border-b border-slate-100 px-6 lg:px-10 py-4 sticky top-0 z-10">
+        <header className="bg-white/80 backdrop-blur-md border-b border-slate-100 px-6 lg:px-10 py-4 shrink-0 z-10">
           <div className="max-w-[1180px] mx-auto flex items-center justify-between gap-4">
             <div>
               <h1 className="text-lg font-bold text-slate-900 font-display">
@@ -1089,8 +1092,9 @@ export default function App() {
           </div>
         </header>
 
-        {/* Main Viewport Container */}
-        <main id="main-content" className="flex-1 max-w-[1180px] w-full mx-auto px-6 lg:px-10 py-8">
+        {/* Main Viewport Container — Scrollbar belongs directly to the main window */}
+        <div className="flex-1 lg:overflow-y-auto">
+          <main id="main-content" className="max-w-[1180px] w-full mx-auto px-6 lg:px-10 py-8">
           {/* =================================================================
            * SCREEN 1: TRANSACTIONS & DAILY FLOW (תנועות ושוטף)
            * ================================================================= */}
@@ -1807,7 +1811,8 @@ export default function App() {
               )}
             </div>
           )}
-        </main>
+          </main>
+        </div>
       </div>
 
       {/* Add Transaction Modal */}
@@ -1817,7 +1822,7 @@ export default function App() {
           role="dialog"
           aria-modal="true"
         >
-          <div className="bg-white border border-slate-100 rounded-3xl max-w-md w-full p-6 shadow-xl space-y-5">
+          <div className="bg-white border border-slate-100 rounded-3xl max-w-md w-full max-h-[90vh] overflow-y-auto p-6 shadow-xl space-y-5">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-bold text-slate-900">הוספת תנועה חדשה</h2>
               <button
