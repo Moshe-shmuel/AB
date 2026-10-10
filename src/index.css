@@ -1,6 +1,18 @@
 @import "tailwindcss";
 
 @layer base {
+  html[data-font-scale="normal"] {
+    font-size: 16px;
+  }
+
+  html[data-font-scale="large"] {
+    font-size: 18px;
+  }
+
+  html[data-font-scale="xlarge"] {
+    font-size: 20px;
+  }
+
   body {
     font-family: 'Assistant', 'Heebo', system-ui, -apple-system, sans-serif;
     direction: rtl;
@@ -14,6 +26,30 @@
     font-family: 'JetBrains Mono', monospace;
     font-variant-numeric: tabular-nums;
   }
+
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+  }
+}
+
+html[data-high-contrast="true"] body {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+
+html[data-high-contrast="true"] .border-slate-200\/80,
+html[data-high-contrast="true"] .border-slate-200,
+html[data-high-contrast="true"] .border-slate-100 {
+  border-color: #0f172a !important;
+}
+
+html[data-high-contrast="true"] .text-slate-400,
+html[data-high-contrast="true"] .text-slate-500 {
+  color: #1e293b !important;
 }
 
 .tabular-nums {

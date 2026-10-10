@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Accessibility,
   Activity,
   Award,
   BarChart3,
@@ -20,8 +21,10 @@ import {
   Plus,
   Repeat,
   Search,
+  Sparkles,
   Target,
   Trash2,
+  Volume2,
   X,
 } from 'lucide-react';
 import {
@@ -60,6 +63,10 @@ import {
   MotivationalPopupData,
   SavingsMotivatorPopup,
 } from './components/SavingsMotivatorPopup';
+import {
+  AccessibilityModal,
+  AccessibilityPreferences,
+} from './components/AccessibilityModal';
 
 const STORAGE_KEYS = {
   INITIALIZED: 'budget_pro:initialized_v4',
@@ -70,6 +77,7 @@ const STORAGE_KEYS = {
   CUSTOM_CATS: 'budget_pro:custom_categories',
   SAVINGS_FUNDS: 'budget_pro:savings_funds',
   RECURRING_TEMPLATES: 'budget_pro:recurring_templates',
+  A11Y_PREFS: 'budget_pro:a11y_prefs',
 };
 
 function pad(n: number): string {
@@ -99,6 +107,27 @@ export default function App() {
   const [viewMonth, setViewMonth] = useState<number>(today.getMonth());
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isAddTxModalOpen, setIsAddTxModalOpen] = useState(false);
+  const [isA11yModalOpen, setIsA11yModalOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Accessibility & Display Preferences
+  const [a11yPrefs, setA11yPrefs] = useState<AccessibilityPreferences>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.A11Y_PREFS);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {
+      fontScale: 'normal',
+      highContrast: false,
+      simplifiedMode: false,
+    };
+  });
+
+  // 1-Line Quick Inline Entry State
+  const [quickInlineType, setQuickInlineType] = useState<TransactionType>('expense');
+  const [quickInlineCat, setQuickInlineCat] = useState<string>('food');
+  const [quickInlineAmount, setQuickInlineAmount] = useState<string>('');
+  const [quickInlineNote, setQuickInlineNote] = useState<string>('');
 
   // Core Persistent State
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -239,6 +268,65 @@ export default function App() {
       localStorage.setItem(STORAGE_KEYS.RECURRING_TEMPLATES, JSON.stringify(recurringTemplates));
     } catch {}
   }, [recurringTemplates]);
+
+  // Sync Accessibility Preferences to DOM & localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.A11Y_PREFS, JSON.stringify(a11yPrefs));
+      document.documentElement.setAttribute('data-font-scale', a11yPrefs.fontScale);
+      document.documentElement.setAttribute(
+        'data-high-contrast',
+        a11yPrefs.highContrast ? 'true' : 'false'
+      );
+    } catch {}
+  }, [a11yPrefs]);
+
+  // Global Keyboard Shortcuts for Effortless Navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isInput =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'SELECT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable);
+
+      if (e.key === 'Escape') {
+        setIsAddTxModalOpen(false);
+        setIsExportModalOpen(false);
+        setIsA11yModalOpen(false);
+        setMotivationalPopup(null);
+        setEditingId(null);
+        return;
+      }
+
+      if (isInput) return;
+
+      if (e.key === 'n' || e.key === 'N' || e.key === '+') {
+        e.preventDefault();
+        setIsAddTxModalOpen(true);
+      } else if (e.key === '/') {
+        e.preventDefault();
+        setActiveTab('overview');
+        setTimeout(() => searchInputRef.current?.focus(), 40);
+      } else if (e.key === '?') {
+        e.preventDefault();
+        setIsA11yModalOpen((prev) => !prev);
+      } else if (e.key === '1') {
+        setActiveTab('overview');
+      } else if (e.key === '2') {
+        setActiveTab('recurring');
+      } else if (e.key === '3') {
+        setActiveTab('maaserot');
+      } else if (e.key === '4') {
+        setActiveTab('forecast');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const expenseCategories = useMemo(
     () => [
@@ -735,6 +823,51 @@ export default function App() {
     setRecurringTemplates(seed.recurringTemplates);
   };
 
+  // Quick 1-Line Inline Transaction Submit
+  const handleQuickInlineSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const num = parseFloat(quickInlineAmount);
+    if (!num || num <= 0) return;
+    const catList = quickInlineType === 'expense' ? expenseCategories : incomeCategories;
+    const catObj = catList.find((c) => c.id === quickInlineCat) || catList[0];
+
+    const newTx: Transaction = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      type: quickInlineType,
+      category: catObj ? catObj.id : quickInlineCat,
+      categoryLabel: catObj ? catObj.label : quickInlineCat,
+      amount: num,
+      note: quickInlineNote.trim(),
+      date: dateKey(new Date()),
+      paymentMethod: 'credit',
+      isRecurring: false,
+      isMaaserEligible: quickInlineType === 'income' ? true : undefined,
+    };
+
+    setTransactions((prev) => [newTx, ...prev]);
+    setQuickInlineAmount('');
+    setQuickInlineNote('');
+  };
+
+  // Built-in Offline Voice Readout (Web Speech API)
+  const handleSpeakMonthlySummary = () => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    try {
+      window.speechSynthesis.cancel();
+      const text = `סיכום חודש ${HE_MONTHS[viewMonth]} ${viewYear}. סך ההכנסות: ${Math.round(
+        summaryMetrics.income
+      )} שקלים. סך ההוצאות: ${Math.round(summaryMetrics.expense)} שקלים. יתרה נטו: ${Math.round(
+        summaryMetrics.balance
+      )} שקלים. יתרת מעשרות להפרשה: ${Math.round(
+        Math.max(0, summaryMetrics.maaserRemaining)
+      )} שקלים.`;
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = 'he-IL';
+      utter.rate = 0.95;
+      window.speechSynthesis.speak(utter);
+    } catch {}
+  };
+
   const primaryNav: { id: ActiveTab; label: string; icon: React.ComponentType<{ className?: string }>; count?: number }[] = [
     { id: 'overview', label: 'סקירה ותנועות', icon: LayoutDashboard },
     { id: 'recurring', label: 'הוראות קבע וקבועות', icon: Repeat, count: pendingMonthlyRecurring.length },
@@ -755,6 +888,14 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50/70 text-slate-900 flex flex-col lg:flex-row" dir="rtl">
+      {/* Skip to Main Content Link for Keyboard & Screen Reader Users */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:right-3 focus:z-50 focus:px-4 focus:py-2 focus:bg-blue-600 focus:text-white focus:rounded-xl focus:font-bold focus:shadow-lg"
+      >
+        דלג לתוכן הראשי
+      </a>
+
       {/* Clean Modern Right Sidebar (Desktop) */}
       <aside className="w-full lg:w-64 bg-white border-b lg:border-b-0 lg:border-l border-slate-200/80 shrink-0 flex flex-col justify-between lg:sticky lg:top-0 lg:h-screen z-20">
         <div className="p-5 space-y-6">
@@ -781,24 +922,40 @@ export default function App() {
               </div>
             </a>
 
-            <button
-              type="button"
-              onClick={() => setIsAddTxModalOpen(true)}
-              className="lg:hidden px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-xl flex items-center gap-1"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>תנועה חדשה</span>
-            </button>
+            <div className="flex items-center gap-1.5 lg:hidden">
+              <button
+                type="button"
+                onClick={() => setIsA11yModalOpen(true)}
+                aria-label="הגדרות נגישות ותצוגה"
+                className="p-2 text-slate-600 bg-slate-100 rounded-xl"
+              >
+                <Accessibility className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsAddTxModalOpen(true)}
+                className="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-xl flex items-center gap-1"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>תנועה חדשה</span>
+              </button>
+            </div>
           </div>
 
           {/* Primary Action Button (Desktop) */}
           <button
             type="button"
             onClick={() => setIsAddTxModalOpen(true)}
-            className="hidden lg:flex w-full py-2.5 px-4 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors items-center justify-center gap-2 shadow-2xs"
+            title="קיצור מקלדת: N או +"
+            className="hidden lg:flex w-full py-2.5 px-4 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors items-center justify-between shadow-2xs"
           >
-            <Plus className="w-4 h-4" />
-            <span>תנועה חדשה</span>
+            <span className="flex items-center gap-2">
+              <Plus className="w-4 h-4" />
+              <span>תנועה חדשה</span>
+            </span>
+            <kbd className="px-1.5 py-0.5 text-[10px] bg-blue-700/80 text-blue-100 rounded font-mono-num">
+              N
+            </kbd>
           </button>
 
           {/* Navigation Links */}
@@ -840,40 +997,54 @@ export default function App() {
               </nav>
             </div>
 
-            <div>
-              <div className="px-3 mb-2 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                ניתוח ותכנון
+            {!a11yPrefs.simplifiedMode && (
+              <div>
+                <div className="px-3 mb-2 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                  ניתוח ותכנון
+                </div>
+                <nav className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0">
+                  {analyticsNav.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = activeTab === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          setActiveTab(item.id);
+                          setEditingId(null);
+                        }}
+                        className={`px-3 py-2 text-xs font-medium rounded-xl transition-all flex items-center gap-2.5 whitespace-nowrap shrink-0 ${
+                          isActive
+                            ? 'bg-blue-50/90 text-blue-700 font-semibold'
+                            : 'text-slate-600 hover:bg-slate-100/70 hover:text-slate-900'
+                        }`}
+                      >
+                        <Icon className={`w-4 h-4 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} />
+                        <span>{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </nav>
               </div>
-              <nav className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0">
-                {analyticsNav.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = activeTab === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => {
-                        setActiveTab(item.id);
-                        setEditingId(null);
-                      }}
-                      className={`px-3 py-2 text-xs font-medium rounded-xl transition-all flex items-center gap-2.5 whitespace-nowrap shrink-0 ${
-                        isActive
-                          ? 'bg-blue-50/90 text-blue-700 font-semibold'
-                          : 'text-slate-600 hover:bg-slate-100/70 hover:text-slate-900'
-                      }`}
-                    >
-                      <Icon className={`w-4 h-4 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} />
-                      <span>{item.label}</span>
-                    </button>
-                  );
-                })}
-              </nav>
-            </div>
+            )}
           </div>
         </div>
 
         {/* Sidebar Bottom Utilities */}
         <div className="hidden lg:block p-4 border-t border-slate-100 space-y-1.5">
+          <button
+            type="button"
+            onClick={() => setIsA11yModalOpen(true)}
+            className="w-full px-3 py-2 text-xs font-medium text-blue-700 hover:bg-blue-50/80 rounded-xl transition-colors flex items-center justify-between"
+          >
+            <span className="flex items-center gap-2.5">
+              <Accessibility className="w-4 h-4 text-blue-600" />
+              <span>נגישות וגודל תצוגה</span>
+            </span>
+            <span className="text-[10px] font-bold text-slate-400 font-mono-num">A+</span>
+          </button>
+
           <button
             type="button"
             onClick={() => triggerSavingsPopup()}
@@ -938,6 +1109,39 @@ export default function App() {
                 היום
               </button>
 
+              {/* Quick Toggle for Simplified Mode */}
+              <button
+                type="button"
+                onClick={() =>
+                  setA11yPrefs((prev) => ({
+                    ...prev,
+                    simplifiedMode: !prev.simplifiedMode,
+                  }))
+                }
+                title="החלפה בין מצב תצוגה פשוט למצב מלא"
+                className={`px-3 py-1.5 text-xs font-medium rounded-xl border transition-colors flex items-center gap-1.5 whitespace-nowrap ${
+                  a11yPrefs.simplifiedMode
+                    ? 'bg-blue-50 text-blue-700 border-blue-200 font-semibold'
+                    : 'bg-white text-slate-600 border-slate-200/90 hover:bg-slate-50'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">
+                  {a11yPrefs.simplifiedMode ? 'מצב פשוט: פעיל' : 'מצב פשוט'}
+                </span>
+              </button>
+
+              {/* Quick Accessibility & Font Size Button */}
+              <button
+                type="button"
+                onClick={() => setIsA11yModalOpen(true)}
+                title="נגישות, גודל טקסט וקיצורי מקלדת (?)"
+                className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200/90 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-1.5 whitespace-nowrap"
+              >
+                <Accessibility className="w-3.5 h-3.5 text-blue-600" />
+                <span className="hidden md:inline">נגישות (A+)</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => exportTransactionsCSV(transactions)}
@@ -960,10 +1164,39 @@ export default function App() {
         </header>
 
         {/* Main Viewport Container */}
-        <main className="flex-1 max-w-[1240px] w-full mx-auto px-6 lg:px-8 py-7">
+        <main id="main-content" className="flex-1 max-w-[1240px] w-full mx-auto px-6 lg:px-8 py-7">
           {/* TAB 1: OVERVIEW & TRANSACTIONS */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
+              {/* Plain-Language Accessible Summary Bar + Voice Readout */}
+              <div className="bg-blue-50/50 border border-blue-200/70 rounded-2xl px-5 py-3.5 flex flex-wrap items-center justify-between gap-3">
+                <div className="text-xs text-slate-700 leading-relaxed">
+                  <strong className="text-slate-900">סיכום מהיר ({HE_MONTHS[viewMonth]}): </strong>
+                  הכנסתם עד כה <strong>{formatILS(summaryMetrics.income)}</strong> והוצאתם{' '}
+                  <strong>{formatILS(summaryMetrics.expense)}</strong> (יתרה:{' '}
+                  <strong
+                    className={
+                      summaryMetrics.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                    }
+                  >
+                    {formatILS(summaryMetrics.balance)}
+                  </strong>
+                  ).{' '}
+                  {summaryMetrics.maaserRemaining > 0
+                    ? `נותרו ${formatILS(summaryMetrics.maaserRemaining)} להפרשת מעשרות.`
+                    : 'קופת המעשרות מאוזנת לחלוטין!'}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSpeakMonthlySummary}
+                  className="px-3 py-1 text-xs font-semibold text-blue-700 bg-white border border-blue-200 hover:bg-blue-50 rounded-xl transition-colors flex items-center gap-1.5 shrink-0"
+                  title="הקראה קולית של סיכום החודש"
+                >
+                  <Volume2 className="w-3.5 h-3.5" />
+                  <span>הקרא סיכום</span>
+                </button>
+              </div>
               {/* Clean 4-Card KPI Strip */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-white border border-slate-200/80 rounded-2xl p-5">
@@ -1121,6 +1354,89 @@ export default function App() {
 
               {/* Full-Width Clean Transactions Table */}
               <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden">
+                {/* 1-Line Quick Inline Entry Bar (Accessible Fast Entry) */}
+                <form
+                  onSubmit={handleQuickInlineSubmit}
+                  aria-label="הזנה מהירה של תנועה חדשה"
+                  className="px-6 py-3.5 bg-slate-50/70 border-b border-slate-100 flex flex-wrap items-center gap-2.5"
+                >
+                  <span className="text-xs font-bold text-slate-700 ml-1">הזנה מהירה:</span>
+
+                  <div className="inline-flex bg-white border border-slate-200 p-0.5 rounded-xl text-xs">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuickInlineType('expense');
+                        setQuickInlineCat(expenseCategories[0]?.id || 'food');
+                      }}
+                      className={`px-2.5 py-1 rounded-lg font-semibold transition-colors ${
+                        quickInlineType === 'expense'
+                          ? 'bg-rose-50 text-rose-700'
+                          : 'text-slate-500 hover:text-slate-900'
+                      }`}
+                    >
+                      הוצאה (−)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuickInlineType('income');
+                        setQuickInlineCat(incomeCategories[0]?.id || 'salary');
+                      }}
+                      className={`px-2.5 py-1 rounded-lg font-semibold transition-colors ${
+                        quickInlineType === 'income'
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : 'text-slate-500 hover:text-slate-900'
+                      }`}
+                    >
+                      הכנסה (+)
+                    </button>
+                  </div>
+
+                  <input
+                    type="number"
+                    min="1"
+                    step="any"
+                    value={quickInlineAmount}
+                    onChange={(e) => setQuickInlineAmount(e.target.value)}
+                    placeholder="סכום (₪)..."
+                    aria-label="סכום בשקלים להזנה מהירה"
+                    className="w-28 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl font-mono-num focus:outline-none focus:border-blue-600"
+                  />
+
+                  <select
+                    value={quickInlineCat}
+                    onChange={(e) => setQuickInlineCat(e.target.value)}
+                    aria-label="קטגוריה להזנה מהירה"
+                    className="px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-600"
+                  >
+                    {(quickInlineType === 'expense' ? expenseCategories : incomeCategories).map(
+                      (c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.label}
+                        </option>
+                      )
+                    )}
+                  </select>
+
+                  <input
+                    type="text"
+                    value={quickInlineNote}
+                    onChange={(e) => setQuickInlineNote(e.target.value)}
+                    placeholder="פירוט קצר (אופציונלי)..."
+                    aria-label="הערה לתנועה"
+                    className="flex-1 min-w-[140px] px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-600"
+                  />
+
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors flex items-center gap-1 shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>הוסף מיד</span>
+                  </button>
+                </form>
+
                 {/* Table Toolbar */}
                 <div className="px-6 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
@@ -1133,7 +1449,7 @@ export default function App() {
                       className="px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors flex items-center gap-1"
                     >
                       <Plus className="w-3.5 h-3.5" />
-                      <span>הוסף תנועה</span>
+                      <span>טופס מלא ומעשרות</span>
                     </button>
                   </div>
 
@@ -1141,11 +1457,13 @@ export default function App() {
                     <div className="relative">
                       <Search className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
                       <input
+                        ref={searchInputRef}
                         type="text"
                         value={filterText}
                         onChange={(e) => setFilterText(e.target.value)}
-                        placeholder="חיפוש תנועה..."
-                        className="pr-8 pl-3 py-1.5 text-xs bg-slate-50 border border-slate-200/80 rounded-xl focus:outline-none focus:bg-white focus:border-blue-600 w-44"
+                        placeholder="חיפוש תנועה (/ במקלדת)..."
+                        aria-label="חיפוש תנועה ביומן"
+                        className="pr-8 pl-3 py-1.5 text-xs bg-slate-50 border border-slate-200/80 rounded-xl focus:outline-none focus:bg-white focus:border-blue-600 w-48"
                       />
                     </div>
 
@@ -1755,6 +2073,15 @@ export default function App() {
         onImportBackup={handleImportBackup}
         onResetEmpty={handleResetEmpty}
         onLoadDemo={handleLoadDemo}
+      />
+
+      {/* Accessibility, Font Size & Keyboard Shortcuts Modal */}
+      <AccessibilityModal
+        isOpen={isA11yModalOpen}
+        onClose={() => setIsA11yModalOpen(false)}
+        prefs={a11yPrefs}
+        onUpdatePrefs={setA11yPrefs}
+        onSpeakMonthlySummary={handleSpeakMonthlySummary}
       />
     </div>
   );
