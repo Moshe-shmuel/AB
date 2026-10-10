@@ -13,6 +13,7 @@
   ],
   "win": {
     "icon": "electron/icon.ico",
+    "artifactName": "Budget-Maaser-Pro-Win64.${ext}",
     "target": [
       {
         "target": "portable",
@@ -38,8 +39,5 @@
     "createStartMenuShortcut": true,
     "shortcutName": "כלכלת הבית ומעשרות Pro",
     "artifactName": "Budget-Maaser-Pro-Setup.exe"
-  },
-  "zip": {
-    "artifactName": "Budget-Maaser-Pro-Win64.zip"
   }
 }
