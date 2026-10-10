@@ -1,0 +1,25 @@
+{
+  "appId": "com.budgetmaaser.pro",
+  "productName": "Budget-Maaser-Pro",
+  "electronVersion": "34.2.0",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "dist/**/*",
+    "electron/**/*",
+    "package.json"
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "portable",
+        "arch": ["x64"]
+      }
+    ],
+    "artifactName": "Budget-Maaser-Pro-Portable.exe"
+  },
+  "portable": {
+    "artifactName": "Budget-Maaser-Pro-Portable.exe"
+  }
+}

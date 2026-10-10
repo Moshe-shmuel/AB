@@ -1,4 +1,4 @@
-name: Build Windows EXE & Single-File Release
+name: Build Electron Portable EXE & Single-File Release
 
 on:
   push:
@@ -19,8 +19,8 @@ permissions:
   contents: write
 
 jobs:
-  build-windows-exe:
-    name: Compile Windows .EXE & Single-File App
+  build-electron-exe:
+    name: Build Standalone Electron .EXE & Single-File HTML
     runs-on: windows-latest
 
     steps:
@@ -32,20 +32,25 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install Dependencies
+      - name: Install Project Dependencies
         run: npm install --legacy-peer-deps
+
+      - name: Install Electron & Electron-Builder
+        run: npm install --no-save --legacy-peer-deps electron@34.2.0 electron-builder@25.1.8
 
       - name: Type-Check (TypeScript Lint)
         run: npm run lint
 
-      - name: Build App & Compile Windows .EXE (Budget-Maaser-Pro.exe)
-        run: npm run build:single
+      - name: Build App, Single-File HTML & Standalone Electron Portable .EXE
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npm run dist:exe
 
-      - name: Verify EXE & HTML Output Exists
+      - name: Verify Portable .EXE & HTML Output
         shell: pwsh
         run: |
-          if (!(Test-Path "release/Budget-Maaser-Pro.exe")) {
-            Write-Error "Budget-Maaser-Pro.exe was not generated!"
+          if (!(Test-Path "release/Budget-Maaser-Pro-Portable.exe")) {
+            Write-Error "Budget-Maaser-Pro-Portable.exe was not generated!"
             exit 1
           }
           if (!(Test-Path "release/Budget-Maaser-Pro-SingleFile.html")) {
@@ -54,27 +59,27 @@ jobs:
           }
           Get-ChildItem release/
 
-      - name: Upload Windows .EXE & Single-File Artifact on Every Commit
+      - name: Upload Electron Portable .EXE & Single-File Artifact on Every Commit
         uses: actions/upload-artifact@v4
         with:
-          name: Budget-Maaser-Pro-Windows-EXE-${{ github.sha }}
+          name: Budget-Maaser-Pro-Desktop-${{ github.sha }}
           path: |
-            release/Budget-Maaser-Pro.exe
+            release/Budget-Maaser-Pro-Portable.exe
             release/Budget-Maaser-Pro-SingleFile.html
           if-no-files-found: error
           retention-days: 90
 
-      - name: Attach Windows .EXE & Single-File Build to GitHub Release (on Tag or Release)
+      - name: Attach Electron Portable .EXE & Single-File Build to GitHub Release (on Tag or Release)
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            release/Budget-Maaser-Pro.exe
+            release/Budget-Maaser-Pro-Portable.exe
             release/Budget-Maaser-Pro-SingleFile.html
           generate_release_notes: true
           body: |
-            ### כלכלת הבית ומעשרות Pro — מהדורת תוכנה שולחנית ל-Windows (.EXE) וקובץ בודד
-            - **`Budget-Maaser-Pro.exe`**: קובץ הרצה שולחני אמיתי ל-Windows (קובץ `.EXE` עצמאי יחיד ללא צורך בהתקנה) הכולל בתוכו את המערכת המלאה ושומר נתונים מקומית במחשב.
-            - **`Budget-Maaser-Pro-SingleFile.html`**: קובץ HTML יחיד עצמאי (Single-File) לפתיחה ישירה בכל דפדפן.
+            ### כלכלת הבית ומעשרות Pro — תוכנה שולחנית עצמאית ל-Windows (Electron Portable .EXE)
+            - **`Budget-Maaser-Pro-Portable.exe`**: תוכנה שולחנית עצמאית מלאה ל-Windows (קובץ `.EXE` יחיד מבוסס Electron, ללא תלות ב-Chrome או בדפדפן חיצוני וללא צורך בהתקנה).
+            - **`Budget-Maaser-Pro-SingleFile.html`**: קובץ HTML יחיד עצמאי (Single-File) לפתיחה מהירה בכל מחשב.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

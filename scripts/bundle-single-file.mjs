@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -22,7 +21,7 @@ let html = fs.readFileSync(path.join(distDir, 'index.html'), 'utf-8');
 html = html.replace(
   /<link\b[^>]*href=["']([^"']+\.css)["'][^>]*>/gi,
   (fullMatch, href) => {
-    const cleanPath = href.replace(/^\//, '');
+    const cleanPath = href.replace(/^\.?\//, '');
     const cssFile = path.join(distDir, cleanPath);
     if (fs.existsSync(cssFile)) {
       const cssContent = fs.readFileSync(cssFile, 'utf-8');
@@ -38,7 +37,7 @@ const inlineScripts = [];
 html = html.replace(
   /<script\b[^>]*src=["']([^"']+\.js)["'][^>]*>\s*<\/script>/gi,
   (fullMatch, src) => {
-    const cleanPath = src.replace(/^\//, '');
+    const cleanPath = src.replace(/^\.?\//, '');
     const jsFile = path.join(distDir, cleanPath);
     if (fs.existsSync(jsFile)) {
       const jsContent = fs
@@ -62,43 +61,3 @@ fs.writeFileSync(singleHtmlPath, '\ufeff' + html, 'utf-8');
 
 console.log('✅ Single-file HTML created successfully:');
 console.log('   -', singleHtmlPath);
-
-// 4. On Windows (including GitHub Actions windows-latest), compile real native Windows .EXE
-const csSourcePath = path.join(__dirname, 'DesktopLauncher.cs');
-const exeOutputPath = path.join(releaseDir, 'Budget-Maaser-Pro.exe');
-
-const cscCandidates = [
-  'C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe',
-  'C:\\Windows\\Microsoft.NET\\Framework\\v4.0.30319\\csc.exe',
-];
-
-const cscPath = cscCandidates.find((p) => fs.existsSync(p));
-
-if (cscPath && fs.existsSync(csSourcePath)) {
-  try {
-    execFileSync(
-      cscPath,
-      [
-        '/nologo',
-        '/target:winexe',
-        '/optimize+',
-        `/out:${exeOutputPath}`,
-        `/resource:${singleHtmlPath},BudgetMaaserPro.SingleFile.html`,
-        '/r:System.dll',
-        '/r:System.Windows.Forms.dll',
-        '/r:System.Drawing.dll',
-        csSourcePath,
-      ],
-      { stdio: 'inherit' }
-    );
-    console.log('✅ Real Windows Desktop .EXE compiled successfully:');
-    console.log('   -', exeOutputPath);
-  } catch (err) {
-    console.error('❌ Failed to compile Windows .EXE with csc.exe:', err);
-    process.exit(1);
-  }
-} else {
-  console.log(
-    'ℹ️ Windows csc.exe not found on this OS (running on Linux/macOS). GitHub Actions (windows-latest) will compile release/Budget-Maaser-Pro.exe automatically.'
-  );
-}
