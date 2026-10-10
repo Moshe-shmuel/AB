@@ -181,27 +181,32 @@ export const DesktopExportModal: React.FC<DesktopExportModalProps> = ({
           )}
         </div>
 
-        {/* Section 2: Standalone Electron Portable .EXE & Single-File HTML */}
+        {/* Section 2: Standalone Electron Desktop Suite & Single-File HTML */}
         <div className="bg-slate-50/80 border border-slate-200/70 rounded-2xl p-4 space-y-2.5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex-1 min-w-[240px]">
               <div className="text-xs font-bold text-slate-900">
-                תוכנה שולחנית עצמאית ל-Windows (<code className="font-mono-num">Electron Portable .EXE</code>)
+                חבילת תוכנה שולחנית מואצת ל-Windows (<code className="font-mono-num">Setup / ZIP / Portable .EXE</code>)
               </div>
               <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
                 בכל Push או Release ב-GitHub Actions (או בהרצת{' '}
                 <code className="px-1 py-0.5 bg-white border border-slate-200 rounded font-mono-num">
                   npm run dist:exe
                 </code>
-                ), נבנה אוטומטית הקובץ{' '}
+                ), נוצרות אוטומטית בתיקיית <code className="font-mono-num">release/</code> כל הגרסאות לנוחות ומהירות מרבית:
+                {' '}
                 <code className="px-1 py-0.5 bg-white border border-slate-200 rounded font-mono-num text-blue-700 font-semibold">
-                  release/Budget-Maaser-Pro-Portable.exe
+                  Budget-Maaser-Pro-Setup.exe
                 </code>{' '}
-                — קובץ <code className="font-mono-num">.exe</code> שולחני עצמאי מבוסס Electron שרץ כתוכנת Windows מלאה ללא שום תלות ב-Chrome או בדפדפן חיצוני, לצד{' '}
-                <code className="px-1 py-0.5 bg-white border border-slate-200 rounded font-mono-num">
-                  Budget-Maaser-Pro-SingleFile.html
-                </code>
-                .
+                (מתקין בקליק אחד שנפתח תוך פחות משנייה),{' '}
+                <code className="px-1 py-0.5 bg-white border border-slate-200 rounded font-mono-num text-blue-700 font-semibold">
+                  Budget-Maaser-Pro-Win64.zip
+                </code>{' '}
+                (חילוץ חד-פעמי ללא התקנה וללא המתנה), ו-
+                <code className="px-1 py-0.5 bg-white border border-slate-200 rounded font-mono-num text-blue-700 font-semibold">
+                  Budget-Maaser-Pro-Portable.exe
+                </code>{' '}
+                (קובץ בודד מואץ ללא דחיסה כבדה, עם חלון Splash מיידי ומזעור ל-System Tray לפתיחה חוזרת ב-0.1 שניות).
               </p>
             </div>
             <button
